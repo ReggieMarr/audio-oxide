@@ -2,7 +2,9 @@ extern crate bincode;
 use serde::ser::{Serialize, SerializeStruct, Serializer};//, Deserialize, Deserializer};
 use std::os::raw::c_char;
 use std::slice;
-
+///Note that when importing sibling modules in an application
+///We need to declare the module in main.rs
+use crate::signal_processing::Scope;
 //might not need this
 #[allow(dead_code)]
 #[repr(C)]
@@ -63,54 +65,6 @@ impl serde::ser::Serialize for Pixel {
     }
 }
 
-
-struct Scope {
-    start : usize,
-    end : usize,
-    size : usize
-}
-
-#[allow(dead_code)]
-impl Scope {
-    fn new(init_start : usize, init_end : usize) -> Result<Scope,()> {
-        assert!(init_start < init_end);
-        Ok(Scope {
-            start : init_start,
-            end : init_end,
-            size : init_end - init_start
-        })
-    }
-}
-
-#[allow(dead_code)]
-struct Sample<'a, SampleType,TransformType> {
-    data : &'a Vec<SampleType>,
-    scope : Scope,
-    output_data : Option<TransformType>,
-    /*
-    Might want to have a "mapped data type"
-    which maps the data uniformly to an array the
-    size of the scope
-    */
-}
-
-#[allow(dead_code)]
-impl<T,R : Default> Sample<'_, T, R> {
-    //DANGER! No idea what &'static does, it may make it difficult to implement the update funciton
-    fn new(input_data : &'static Vec<T>, input_scope : Scope, data_transform : Option<fn(&Vec<T>)->R>)
-        ->Sample<T,R>{
-        let mut output : Option<R> = None;
-        if let Some(_gen_func) = data_transform {
-            let transform_func = data_transform.unwrap();
-            output = Some(transform_func(&input_data));
-        }
-        Sample {
-            data : &input_data,
-            scope : input_scope,
-            output_data : output
-        }
-    }
-}
 
 const DEFAULT_MESSAGE_SIZE : usize = 1024;
 //each led colour is represented by the value of 3 bytes (r,g,b)
