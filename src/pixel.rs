@@ -4,12 +4,14 @@ use std::os::raw::c_char;
 use std::slice;
 
 //might not need this
+#[allow(dead_code)]
 #[repr(C)]
 struct Buffer {
     data : *mut u8,
     len : usize
 }
 
+#[allow(dead_code)]
 struct Coordinate {
     pub x : u8,
     pub y : u8,
@@ -32,11 +34,11 @@ struct Pixel {
 impl Pixel {
     fn new(setup_colour : Option<PixelColour>, setup_index : Option<u8>) -> Pixel {
         let mut prologue_colour = [0u8;3];
-        if let Some(x) = setup_colour {
+        if let Some(_) = setup_colour {
             prologue_colour = setup_colour.unwrap();
         }
         let mut prologue_index = 0u8;
-        if let Some(x) = setup_index {
+        if let Some(_) = setup_index {
             prologue_index = setup_index.unwrap();
         }
         Pixel { 
@@ -68,6 +70,7 @@ struct Scope {
     size : usize
 }
 
+#[allow(dead_code)]
 impl Scope {
     fn new(init_start : usize, init_end : usize) -> Result<Scope,()> {
         assert!(init_start < init_end);
@@ -79,6 +82,7 @@ impl Scope {
     }
 }
 
+#[allow(dead_code)]
 struct Sample<'a, SampleType,TransformType> {
     data : &'a Vec<SampleType>,
     scope : Scope,
@@ -90,12 +94,13 @@ struct Sample<'a, SampleType,TransformType> {
     */
 }
 
+#[allow(dead_code)]
 impl<T,R : Default> Sample<'_, T, R> {
     //DANGER! No idea what &'static does, it may make it difficult to implement the update funciton
     fn new(input_data : &'static Vec<T>, input_scope : Scope, data_transform : Option<fn(&Vec<T>)->R>)
         ->Sample<T,R>{
         let mut output : Option<R> = None;
-        if let Some(gen_func) = data_transform {
+        if let Some(_gen_func) = data_transform {
             let transform_func = data_transform.unwrap();
             output = Some(transform_func(&input_data));
         }
@@ -119,6 +124,7 @@ struct PixelStrip {
 impl PixelStrip {
     //need an update here that does essentially the same thing except doesnt create a new instance
     //this error probably has something to do with PixelUsing generic types
+#[allow(dead_code)]
     fn new(scope : Scope, colours : Vec<PixelColour>)->std::io::Result<(PixelStrip)> {
         //suboptimal but the best we can do for now
         assert!(scope.size >= colours.len());
