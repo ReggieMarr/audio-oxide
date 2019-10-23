@@ -1,4 +1,3 @@
-
 extern crate bincode;
 use serde::ser::{Serialize, SerializeStruct, Serializer};//, Deserialize, Deserializer};
 use std::os::raw::c_char;
