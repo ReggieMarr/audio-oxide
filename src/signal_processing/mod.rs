@@ -24,6 +24,11 @@ pub struct Sample<'a, SampleType,TransformType> {
     */
 }
 
+enum UpdateType {
+    WithNewSample,
+    WithNewFunction
+}
+
 impl<T,R : Default> Sample<'_, T, R> {
     //DANGER! No idea what &'static does, it may make it difficult to implement the update funciton
     fn new(input_data : &'static Vec<T>, input_scope : Scope, data_transform : Option<fn(&Vec<T>)->R>)
@@ -39,7 +44,35 @@ impl<T,R : Default> Sample<'_, T, R> {
             output_data : output
         }
     }
+    //We can update our sample with new data, or a new data_transform function
+    //TODO: May want to add some way to update the scope and/or break this up
+    //TODO:May want to introduce some lifetime members here
+    fn update(&self, new_data : Option<Vec<T>>, new_transform : Option<fn(&Vec<T>)->R>) -> std::io::Result<()> {
+        if new_data.is_none() && new_transform.is_none() {
+            panic!("Update cannot be called with no new data or new transform!");
+        }
+        else if !new_data.is_none() && !new_transform.is_none() {
+            unimplemented!();
+        }
+        else if new_data.is_none() && !new_transform.is_none() {
+            let transform_func = new_transform.unwrap();
+            //What if we've changed type ? we should check for that if we cant handle it
+            self.output_data = Some(transform_func(self.data_points));            
+        }
+        else if !new_data.is_none() && new_transform.is_none() {
+            let data = new_data.unwrap();
+            if self.data_points.len() != data.len() {
+                panic!("Sample can only be updated with data that shares scope");
+            }
+            self.data_points = &data;
+        }
+        else {
+            panic!("Should not have gotten here")
+        }
+        Ok(())
+    }
 }
+
 
 
 pub struct Scope {

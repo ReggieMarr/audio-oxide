@@ -25,7 +25,7 @@ use glium::*;//{
 // };
 
 use crate::device_modules::config::*;
-
+use num::complex::Complex;
 
 #[derive(Copy, Clone)]
 pub struct Scalar {
@@ -59,12 +59,6 @@ pub const SAMPLE_RATE: f64 = 44_100.0;
 const CHANNELS: i32 = 2;
 const INTERLEAVED: bool = true;
 
-struct input_parameters {
-
-}
-struct output {
-
-}
  
 fn callback_function() {
     {
@@ -164,6 +158,24 @@ fn callback_function() {
     }
     Continue
 }
+
+fn map_to_ring_buffer(sample_buffer : &Vec<Complex>, time_index  : &u32, buffer_size :usize, fft_size : usize) {
+    //should assert that split point is indeed the middle of the buffer
+    let (left, right) = sample_buffer.split_at_mut(fft_size);
+    //This takes the buffer input to the stream and then begins describing the 
+    //input using complex values on a unit circle. 
+    for ((x, t0), t1) in data.chunks(CHANNELS as usize)
+        .zip(left[time_index..(time_index + buffer_size)].iter_mut())
+        .zip(right[time_index..(time_index + buffer_size)].iter_mut())
+    {
+        let mono = Complex::new(gain * (x[0] + x[1]) / 2.0, 0.0);
+        *t0 = mono;
+        *t1 = mono;
+    }
+    //this updates the time index as we continue to sample the audio stream
+    *time_index = (time_index + buffer_size as usize) % fft_size;
+}
+
 
 pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
     let fft_size = 1024;//config.fft_bins as usize;
@@ -344,7 +356,6 @@ fn test_analytic() {
 #[test]
 fn test_lowpass() {
     let mut lp = get_lowpass(0.5, 0.71);
-    println!();
     println!("{}", lp(1.0));
     for _ in 0..10 {
         println!("{}", lp(0.0));

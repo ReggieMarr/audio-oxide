@@ -1,5 +1,5 @@
+use signal_processing::Sample;
 use rustfft::{FFTplanner, FFT};
-use num::complex::Complex;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Vec4 {
@@ -19,15 +19,9 @@ struct input_parameters {
 //break this up with more generic names
 struct callback_scope_parameters {
     time_ring_buffer : Vec<Complex>
-    time_index : i128,
+    time_index : u64,
     analytic_buffer : Vec<Vec4>
 
-}
-
-trait EventHandler {
-    fn eventhandler(&self) {
-
-    }
 }
 
 //come up with a better name
@@ -35,28 +29,21 @@ struct Callback {
     input : input_parameters,
     scope_param : callback_scope_parameters,
 }
-
 impl EventHandler for Callback {
     fn eventhandler(&self) {
 
-    {
-        let (left, right) = self.scope_param.time_ring_buffer.split_at_mut(fft_size);
-        //This takes the buffer input to the stream and then begins describing the 
-        //input using complex values on a unit circle. 
-        for ((x, t0), t1) in data.chunks(CHANNELS as usize)
-            .zip(left[time_index..(time_index + buffer_size)].iter_mut())
-            .zip(right[time_index..(time_index + buffer_size)].iter_mut())
-        {
-            let mono = Complex::new(gain * (x[0] + x[1]) / 2.0, 0.0);
-            *t0 = mono;
-            *t1 = mono;
-        }
-    }
+    let scope_parm = self.scope_param;
+    let input = self.input;
+    map_to_ring_buffer(&scope_param.time_ring_buffer, fft_size);
+
     //this updates the time index as we continue to sample the audio stream
     self.scope_param.time_index = (time_index + buffer_size as usize) % fft_size;
     //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
     //Here we transform the signal from the time domain to the frequency domain. 
     //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
+    if let Some(_) = input.fft {
+        let fourier_transform
+    }
     fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
 
     //the analytic array acts as a filter, removing the negative and dc portions
