@@ -1,11 +1,5 @@
-extern crate rand;
-// use bincode::serde::serialize;
-// use bincode::serde::serialize;
-use std::mem::size_of;
-use std::mem::size_of_val;
-use termcolor::{Color, Ansi, ColorChoice, ColorSpec, StandardStream, WriteColor};
-use std::io::Write;
-use std::option;
+extern crate rand; // use bincode::serde::serialize; // use bincode::serde::serialize; use std::mem::size_of;
+use std::mem::size_of_val; use termcolor::{Color, Ansi, ColorChoice, ColorSpec, StandardStream, WriteColor}; use std::io::Write; use std::option;
 use rand::Rng;
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv4Addr};
 use std::{thread, time};
@@ -29,10 +23,12 @@ extern crate serde_json;
 // use serde_json;
 mod signal_processing;
 mod pixel;
-
 mod audio_stream;
+//mod audio_stream::callbacks;
 
 use audio_stream::init_audio_simple as other_init_audio_simple;
+use audio_stream::Scalar;
+use audio_stream::callbacks;
 
 // mod plotting;
 // use plotting::*;
@@ -54,10 +50,10 @@ fn setup_device(cfg_settings:&mut Devicecfg) -> (StatusType) {
                         cfg_complete = true;
                         *cfg_settings =  Devicecfg::default();
                     }
-                    _  => { 
+                    _  => {
                         panic!("Unhandled case")
                     },
-                    
+
                 };
             }
             Err(error) => println!("error: {}", error),
@@ -78,10 +74,10 @@ fn config_mode() {
                 "y" => {unimplemented!()},
                 "n" => {
                 },
-                _  => { 
+                _  => {
                     panic!("Unhandled case")
                 },
-                
+
             };
         }
         Err(error) => println!("error: {}", error),
@@ -101,8 +97,8 @@ fn get_freq_chart(audio_buff : &Vec<Vec4>, vec_size : usize, use_polar : bool) -
         amplitudes : Vec::with_capacity(audio_buff.len())
     };
     for audio_packet in audio_buff.iter() {
-        let real_part = audio_packet.vec[0];
-        let im_part = audio_packet.vec[1];
+    let real_part = audio_packet.vec[0];
+    let im_part = audio_packet.vec[1];
         //Unused for now
         let freq = audio_packet.vec[2];
         // let ang_velocity = audio_packet.vec[2];
@@ -160,7 +156,7 @@ fn get_freq_chart(audio_buff : &Vec<Vec4>, vec_size : usize, use_polar : bool) -
 //         if let Some(x) = setup_index {
 //             prologue_index = setup_index.unwrap();
 //         }
-//         Pixel { 
+//         Pixel {
 //             colour : prologue_colour,
 //             index : prologue_index
 //         }
@@ -236,12 +232,12 @@ fn get_freq_chart(audio_buff : &Vec<Vec4>, vec_size : usize, use_polar : bool) -
 
 // // fn make_pixel_packet(data : &Vec<f32>, led_num : usize) -> std::io::Result<(Box<(Vec<u8>)>)> {
 // fn make_pixel_packet(data : &Vec<f32>, led_num : usize) -> std::io::Result<(Box<([u8;1024])>)> {
-    
+
 //     let sample_packet = make_weighted_bar_msg(data, 0, led_num).unwrap();
 //     // assert(sample_packet.len(), led_num);
 //     //the message_size is determined by the number of leds multiplied by the memory required for the colour
 //     // let message_size : usize = led_num*COLOUR_SIZE;
-    
+
 //     // let mut packet_byte_array = vec![0 as u8; message_size];
 //     let mut packet_byte_array = [0 as u8; 1024];
 //     // for (idx, pixel) in sample_packet.iter().enumerate() {
@@ -250,7 +246,7 @@ fn get_freq_chart(audio_buff : &Vec<Vec4>, vec_size : usize, use_polar : bool) -
 //         //since we are always sending a message with an array of 256 pixels
 //         // packet_byte_array.push(pixel.index);
 //         // packet_byte_array.push(pixel_idx as u8);
-        
+
 
 //         if pixel_idx < sample_packet.len() {
 //             packet_byte_array[pixel_idx] = sample_packet[pixel_idx].index;
@@ -259,10 +255,10 @@ fn get_freq_chart(audio_buff : &Vec<Vec4>, vec_size : usize, use_polar : bool) -
 //             packet_byte_array[pixel_idx+3] = sample_packet[pixel_idx].colour[2];
 //             stdout.set_color(ColorSpec::new().set_fg(Some(Color::Rgb(
 //                 packet_byte_array[pixel_idx+0],
-//                 packet_byte_array[pixel_idx+1], 
+//                 packet_byte_array[pixel_idx+1],
 //                 packet_byte_array[pixel_idx+2]))));
 //             println!("▀");
-//         } 
+//         }
 //         // else {
 //         //     let pixel_real_idx = pixel_idx as u8/4u8;
 //         //     packet_byte_array[pixel_idx] = pixel_real_idx;
@@ -288,7 +284,7 @@ fn main() -> std::io::Result<()> {
         //     // println!("led_val: {:?}", led_idx);
         //     update_esp8266(esp_addr, &led_idx)?;
         // }
-        
+
         //get the frequency portion of the frequencyxmagnitude graph
         let fft_size : usize = 1024;
 
@@ -315,8 +311,8 @@ fn main() -> std::io::Result<()> {
                     // ys_data.copy_from_slice(&buffer.analytic);
                     buffer.rendered = true;
                     index = (index + 1) % buffers.len();
-                    //here we borrow a reference to buffer.analytic 
-                    //this allows get_freq_chart to use the data but ensure nothing else 
+                    //here we borrow a reference to buffer.analytic
+                    //this allows get_freq_chart to use the data but ensure nothing else
                     //can manipulate it
                     // println!("size is {:?}",buffer.analytic.len());
                     //make sure to unwrap Results to properly iterate
@@ -328,11 +324,11 @@ fn main() -> std::io::Result<()> {
             // }
         });
         // display(buffers);
-        handle.join().unwrap();   
+        handle.join().unwrap();
         // stream.stop();
 
     }
-    Ok(()) 
+    Ok(())
 }
 
 

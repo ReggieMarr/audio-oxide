@@ -12,7 +12,6 @@ use portaudio::{
     InputStreamCallbackArgs,
     Continue,
 };
-use num::complex::Complex;
 use rustfft::FFTplanner;
 use glium::*;//{
     // Display,
@@ -26,6 +25,7 @@ use glium::*;//{
 
 use crate::device_modules::config::*;
 use num::complex::Complex;
+pub mod callbacks;
 
 #[derive(Copy, Clone)]
 pub struct Scalar {
@@ -59,7 +59,7 @@ pub const SAMPLE_RATE: f64 = 44_100.0;
 const CHANNELS: i32 = 2;
 const INTERLEAVED: bool = true;
 
- 
+/* 
 fn callback_function() {
     {
         let (left, right) = time_ring_buffer.split_at_mut(fft_size);
@@ -158,24 +158,32 @@ fn callback_function() {
     }
     Continue
 }
+*/
+//TODO determine if this is really neccessary
+use std::convert::TryInto;
+use crate::signal_processing::Sample;
 
-fn map_to_ring_buffer(sample_buffer : &Vec<Complex>, time_index  : &u32, buffer_size :usize, fft_size : usize) {
+//May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
+//We actually update the time index and the sample buffer
+fn map_to_ring_buffer(sample_buffer : &Vec<Complex<f32>>, time_index  : &u32,data : Vec<f32>, gain : f32, buffer_size :usize, fft_size : usize) {
     //should assert that split point is indeed the middle of the buffer
     let (left, right) = sample_buffer.split_at_mut(fft_size);
     //This takes the buffer input to the stream and then begins describing the 
     //input using complex values on a unit circle. 
+    let time_size = *time_index as usize;
     for ((x, t0), t1) in data.chunks(CHANNELS as usize)
-        .zip(left[time_index..(time_index + buffer_size)].iter_mut())
-        .zip(right[time_index..(time_index + buffer_size)].iter_mut())
+        .zip(left[time_size..(time_size + buffer_size)].iter_mut())
+        .zip(right[time_size..(time_size + buffer_size)].iter_mut())
     {
         let mono = Complex::new(gain * (x[0] + x[1]) / 2.0, 0.0);
         *t0 = mono;
         *t1 = mono;
     }
     //this updates the time index as we continue to sample the audio stream
-    *time_index = (time_index + buffer_size as usize) % fft_size;
+    *time_index = ((time_size + buffer_size as usize) % fft_size).try_into().unwrap();
 }
 
+use callbacks;
 
 pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
     let fft_size = 1024;//config.fft_bins as usize;
@@ -230,6 +238,7 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
         // this gets multiplied to convolve stuff
         let mut complex_freq_buffer = vec![Complex::new(0.0f32, 0.0); fft_size];
         let mut complex_analytic_buffer = vec![Complex::new(0.0f32, 0.0); fft_size];
+        let mut audio_sample : Sample::<'_,Complex<f32>,Complex<f32>>;
 
         let use_analytic_filt = false;
         let mut analytic_size = fft_size;

@@ -61,7 +61,7 @@ const INTERLEAVED: bool = true;
 
 pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
     let fft_size = 1024;//config.fft_bins as usize;
-    //Found that I had to change the buffer size to 512, not sure if this is really 
+    //Found that I had to change the buffer size to 512, not sure if this is really
     //neccessary but for some reason if I don't do this then I only get half the spectrum
     let buffer_size = 256;//config.audio.buffer_size as usize;
     let num_buffers = 16; //config.audio.num_buffers;
@@ -76,14 +76,14 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     let latency = input_info.default_low_input_latency;
     // Set parameters for the stream settings.
     // We pass which mic should be used, how many channels are used,
-    // whether all the values of all the channels should be passed in a 
+    // whether all the values of all the channels should be passed in a
     // single audiobuffer and the latency that should be considered
     let input_params = StreamParameters::<f32>::new(def_input, CHANNELS, INTERLEAVED, latency);
 
     pa.is_input_format_supported(input_params, SAMPLE_RATE)?;
     // Settings for an inputstream.
     // Here we pass the stream parameters we set before,
-    // the sample rate of the mic and the amount values we want 
+    // the sample rate of the mic and the amount values we want
     let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, buffer_size as u32);
 
     let mut buffers = Vec::with_capacity(num_buffers);
@@ -140,8 +140,8 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
         (receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
             {
                 let (left, right) = time_ring_buffer.split_at_mut(fft_size);
-                //This takes the buffer input to the stream and then begins describing the 
-                //input using complex values on a unit circle. 
+                //This takes the buffer input to the stream and then begins describing the
+                //input using complex values on a unit circle.
                 for ((x, t0), t1) in data.chunks(CHANNELS as usize)
                     .zip(left[time_index..(time_index + buffer_size)].iter_mut())
                     .zip(right[time_index..(time_index + buffer_size)].iter_mut())
@@ -154,21 +154,21 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
             //this updates the time index as we continue to sample the audio stream
             time_index = (time_index + buffer_size as usize) % fft_size;
             //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
-            //Here we transform the signal from the time domain to the frequency domain. 
+            //Here we transform the signal from the time domain to the frequency domain.
             //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
             fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
 
             //the analytic array acts as a filter, removing the negative and dc portions
             //of the signal as well as filtering out the nyquist portion of the signal
-            //Also applies the hamming window here 
+            //Also applies the hamming window here
 
-            // By applying the inverse fourier transform we transform the signal from the frequency domain back into the 
+            // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
             if use_analytic_filt {
                 for (x, y) in analytic.iter().zip(complex_freq_buffer.iter_mut()) {
                     *y = *x * *y;
                 }
             }
-            // By applying the inverse fourier transform we transform the signal from the frequency domain back into the 
+            // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
             // time domain. However now this signal can be represented as a series of points on a unit circle.
             // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
 
@@ -261,14 +261,14 @@ pub fn init_audio(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), 
     let latency = input_info.default_low_input_latency;
     // Set parameters for the stream settings.
     // We pass which mic should be used, how many channels are used,
-    // whether all the values of all the channels should be passed in a 
+    // whether all the values of all the channels should be passed in a
     // single audiobuffer and the latency that should be considered
     let input_params = StreamParameters::<f32>::new(def_input, CHANNELS, INTERLEAVED, latency);
 
     pa.is_input_format_supported(input_params, SAMPLE_RATE)?;
     // Settings for an inputstream.
     // Here we pass the stream parameters we set before,
-    // the sample rate of the mic and the amount values we want 
+    // the sample rate of the mic and the amount values we want
     let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, buffer_size as u32);
 
     let mut buffers = Vec::with_capacity(num_buffers);
@@ -322,8 +322,8 @@ pub fn init_audio(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), 
         (receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
             {
                 let (left, right) = time_ring_buffer.split_at_mut(fft_size);
-                //This takes the buffer input to the stream and then begins describing the 
-                //input using complex values on a unit circle. 
+                //This takes the buffer input to the stream and then begins describing the
+                //input using complex values on a unit circle.
                 for ((x, t0), t1) in data.chunks(CHANNELS as usize)
                     .zip(left[time_index..(time_index + buffer_size)].iter_mut())
                     .zip(right[time_index..(time_index + buffer_size)].iter_mut())
@@ -335,7 +335,7 @@ pub fn init_audio(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), 
             }
             time_index = (time_index + buffer_size as usize) % fft_size;
             //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
-            //Here we transform the signal from the time domain to the frequency domain. 
+            //Here we transform the signal from the time domain to the frequency domain.
             //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
             fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
 
@@ -346,7 +346,7 @@ pub fn init_audio(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), 
                     *y = *x * *y;
                 }
             }
-            // By applying the inverse fourier transform we transform the signal from the frequency domain back into the 
+            // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
             // time domain. However now this signal can be represented as a series of points on a unit circle.
             // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
 
