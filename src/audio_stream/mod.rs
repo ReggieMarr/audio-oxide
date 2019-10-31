@@ -59,54 +59,57 @@ pub const SAMPLE_RATE: f64 = 44_100.0;
 const CHANNELS: i32 = 2;
 const INTERLEAVED: bool = true;
 
-/* 
-fn callback_function() {
+//TODO determine if this is really neccessary
+use std::convert::TryInto;
+use crate::signal_processing::Sample;
+
+//May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
+//We actually update the time index and the sample buffer
+fn pre_process(sample_buffer : &Vec<Complex<f32>>, time_index  : &u32,data : Vec<f32>, gain : f32, buffer_size :usize, fft_size : usize) {
+    //should assert that split point is indeed the middle of the buffer
+    let (left, right) = sample_buffer.split_at_mut(fft_size);
+    //This takes the buffer input to the stream and then begins describing the
+    //input using complex values on a unit circle.
+    let time_size = *time_index as usize;
+    for ((x, t0), t1) in data.chunks(CHANNELS as usize)
+        .zip(left[time_size..(time_size + buffer_size)].iter_mut())
+        .zip(right[time_size..(time_size + buffer_size)].iter_mut())
     {
-        let (left, right) = time_ring_buffer.split_at_mut(fft_size);
-        //This takes the buffer input to the stream and then begins describing the 
-        //input using complex values on a unit circle. 
-        for ((x, t0), t1) in data.chunks(CHANNELS as usize)
-            .zip(left[time_index..(time_index + buffer_size)].iter_mut())
-            .zip(right[time_index..(time_index + buffer_size)].iter_mut())
-        {
-            let mono = Complex::new(gain * (x[0] + x[1]) / 2.0, 0.0);
-            *t0 = mono;
-            *t1 = mono;
-        }
+        let mono = Complex::new(gain * (x[0] + x[1]) / 2.0, 0.0);
+        *t0 = mono;
+        *t1 = mono;
     }
     //this updates the time index as we continue to sample the audio stream
-    time_index = (time_index + buffer_size as usize) % fft_size;
+    *time_index = ((time_size + buffer_size as usize) % fft_size).try_into().unwrap();
+}
+
+fn process(transform, filter, inverse_transform) {
+
     //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
-    //Here we transform the signal from the time domain to the frequency domain. 
+    //Here we transform the signal from the time domain to the frequency domain.
     //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
     fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
 
     //the analytic array acts as a filter, removing the negative and dc portions
     //of the signal as well as filtering out the nyquist portion of the signal
-    //Also applies the hamming window here 
+    //Also applies the hamming window here
 
-    // By applying the inverse fourier transform we transform the signal from the frequency domain back into the 
+    // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
     if use_analytic_filt {
         for (x, y) in analytic.iter().zip(complex_freq_buffer.iter_mut()) {
             *y = *x * *y;
         }
     }
-    // By applying the inverse fourier transform we transform the signal from the frequency domain back into the 
+    // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
     // time domain. However now this signal can be represented as a series of points on a unit circle.
     // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
+}
 
-    if false {
-        let test_freq = complex_freq_buffer.clone();
-        for (freq_idx, freq) in test_freq.iter().take(fft_size/2).enumerate() {
-            let bin = SAMPLE_RATE as f32 / fft_size as f32;
-            // let freq_mag = f32::sqrt((freq.re as f32).exp2() + (freq.im as f32).exp2())/fft_size as f32;
-            let freq_val = bin*freq_idx as f32;
-            if freq_val > 200.0f32 && freq_val < 20_000.0f32 {
-                println!("{:?}, {:?}", freq_val as f32, (20.0f32*((2.0f32*freq.im/fft_size as f32).abs().log10())));
-            }
-        }
-    }
-    //here we are filling the start of our array with the ned of the last one so that we have a continuous stream
+fn post_process() {
+}
+
+
+fn package() {
     if use_analytic_filt {
         analytic_buffer[0] = analytic_buffer[buffer_size];
         analytic_buffer[1] = analytic_buffer[buffer_size + 1];
@@ -148,9 +151,10 @@ fn callback_function() {
         buffer.rendered = false;
         !rendered
     };
-    // for x in 0..num_buffers {
-        // println!("noise {:?}", analytic_buffer[x]);
-    // }
+}
+
+fn finalize() {
+
     buffer_index = (buffer_index + 1) % num_buffers;
     if dropped {
         // what does sender do generally ?
@@ -158,36 +162,44 @@ fn callback_function() {
     }
     Continue
 }
-*/
-//TODO determine if this is really neccessary
-use std::convert::TryInto;
-use crate::signal_processing::Sample;
 
-//May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
-//We actually update the time index and the sample buffer
-fn map_to_ring_buffer(sample_buffer : &Vec<Complex<f32>>, time_index  : &u32,data : Vec<f32>, gain : f32, buffer_size :usize, fft_size : usize) {
-    //should assert that split point is indeed the middle of the buffer
-    let (left, right) = sample_buffer.split_at_mut(fft_size);
-    //This takes the buffer input to the stream and then begins describing the 
-    //input using complex values on a unit circle. 
-    let time_size = *time_index as usize;
-    for ((x, t0), t1) in data.chunks(CHANNELS as usize)
-        .zip(left[time_size..(time_size + buffer_size)].iter_mut())
-        .zip(right[time_size..(time_size + buffer_size)].iter_mut())
-    {
-        let mono = Complex::new(gain * (x[0] + x[1]) / 2.0, 0.0);
-        *t0 = mono;
-        *t1 = mono;
-    }
-    //this updates the time index as we continue to sample the audio stream
-    *time_index = ((time_size + buffer_size as usize) % fft_size).try_into().unwrap();
+fn callback_function() {
+    //open_stream()
+    /*
+       Starts up the whole process
+     */
+    //pre_process()
+    /*
+    Takes some stream, cleans it (optionally)
+    and updates process variables
+    */
+    //process()
+    /*
+     Takes some stream and does some sort of process
+     Right now this goes like
+     Transform (optional) -> filter(optional) -> Inverse Transform (optional)
+     NOTE: The input type and size of this stream and output is always the same
+     */
+    //post_process()
+    /*
+       does some sort of post-processing
+       NOTE: The input and output type are the same although the length may not be
+    */
+    //package()
+    /*
+     This takes the stream and packages it into some output that will be streamed
+     NOTE this will likely change type and size of the input stream
+     */
+    //finalize()
+    //Note: The audio sample is defined as the input given at the process,
+    //or post process if there is one, and then the outut of packaging
+    pre_process()
+
 }
-
-use callbacks;
 
 pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
     let fft_size = 1024;//config.fft_bins as usize;
-    //Found that I had to change the buffer size to 512, not sure if this is really 
+    //Found that I had to change the buffer size to 512, not sure if this is really
     //neccessary but for some reason if I don't do this then I only get half the spectrum
     let buffer_size = 256;//config.audio.buffer_size as usize;
     let num_buffers = 16; //config.audio.num_buffers;
@@ -202,14 +214,14 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     let latency = input_info.default_low_input_latency;
     // Set parameters for the stream settings.
     // We pass which mic should be used, how many channels are used,
-    // whether all the values of all the channels should be passed in a 
+    // whether all the values of all the channels should be passed in a
     // single audiobuffer and the latency that should be considered
     let input_params = StreamParameters::<f32>::new(def_input, CHANNELS, INTERLEAVED, latency);
 
     pa.is_input_format_supported(input_params, SAMPLE_RATE)?;
     // Settings for an inputstream.
     // Here we pass the stream parameters we set before,
-    // the sample rate of the mic and the amount values we want 
+    // the sample rate of the mic and the amount values we want
     let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, buffer_size as u32);
 
     let mut buffers = Vec::with_capacity(num_buffers);
@@ -263,6 +275,14 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
         let mut prev_diff = Complex::new(0.0, 0.0); // sample n-1 - sample n-2
         let mut angle_lp = get_lowpass(cutoff, q);
         let mut noise_lp = get_lowpass(0.05, 0.7);
+        /*
+        pub struct InputCallbackArgs<'a, I: 'a> {
+            pub buffer: &'a [I],
+            pub frames: usize,
+            pub flags: CallbackFlags,
+            pub time: InputCallbackTimeInfo,
+        }
+        */
 
         (receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
             callback_function();
