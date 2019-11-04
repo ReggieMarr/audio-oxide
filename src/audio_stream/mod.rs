@@ -12,7 +12,7 @@ use portaudio::{
     InputStreamCallbackArgs,
     Continue,
 };
-use rustfft::FFTplanner;
+use rustfft::{FFTplanner, FFT};
 use glium::*;//{
     // Display,
     // Vertex,
@@ -27,32 +27,28 @@ use crate::device_modules::config::*;
 use num::complex::Complex;
 pub mod callbacks;
 
-#[derive(Copy, Clone)]
-pub struct Scalar {
-    pub v: f32
-}
-implement_vertex!(Scalar, v);
-
-#[derive(Copy, Clone)]
-pub struct Vec2 {
-    pub vec: [f32; 2],
-}
-implement_vertex!(Vec2, vec);
-
-#[derive(Copy, Clone, Debug)]
-pub struct Vec4 {
-    pub vec: [f32; 4],
-}
-implement_vertex!(Vec4, vec);
-
-
 pub type MultiBuffer = Arc<Vec<Mutex<AudioBuffer>>>;
 pub type PortAudioStream = Stream<NonBlocking, Input<f32>>;
 // pub type ReceiveType = mpsc::Receiver<mpsc>;
 
+
+struct AudioPoint {
+    //a single point on a complex unit circle
+    complex_point : Complex<f32>,
+    //the frequency of the point of the unit circle
+    sample_freq : f32,
+    //average angular noise
+    angular_noise : f32
+    //optionally we could also add angular velocity here
+}
+
+struct AudioSample {
+    buffer : Vec<AudioPoint>
+}
+
 pub struct AudioBuffer {
     pub rendered: bool,
-    pub analytic: Vec<Vec4>,
+    pub analytic: AudioSample,
 }
 
 pub const SAMPLE_RATE: f64 = 44_100.0;
@@ -63,105 +59,167 @@ const INTERLEAVED: bool = true;
 use std::convert::TryInto;
 use crate::signal_processing::Sample;
 
-//May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
-//We actually update the time index and the sample buffer
-fn pre_process(sample_buffer : &Vec<Complex<f32>>, time_index  : &u32,data : Vec<f32>, gain : f32, buffer_size :usize, fft_size : usize) {
-    //should assert that split point is indeed the middle of the buffer
-    let (left, right) = sample_buffer.split_at_mut(fft_size);
-    //This takes the buffer input to the stream and then begins describing the
-    //input using complex values on a unit circle.
-    let time_size = *time_index as usize;
-    for ((x, t0), t1) in data.chunks(CHANNELS as usize)
-        .zip(left[time_size..(time_size + buffer_size)].iter_mut())
-        .zip(right[time_size..(time_size + buffer_size)].iter_mut())
-    {
-        let mono = Complex::new(gain * (x[0] + x[1]) / 2.0, 0.0);
-        *t0 = mono;
-        *t1 = mono;
-    }
-    //this updates the time index as we continue to sample the audio stream
-    *time_index = ((time_size + buffer_size as usize) % fft_size).try_into().unwrap();
+// struct Thalweg<SourceType, MouthType> {
+//     source : Sample<'static, SourceType, MouthType>
+
+// }
+
+// impl<SourceType, MouthType> Thalweg<SourceType, MouthType> {
+//     fn new() {
+
+//     }
+//     fn coalece(&self) {
+
+//     }
+// }
+
+//TODO consider creating a more generic samplestream that
+//we can make into an audiostream
+struct AudioStream {
+    time_index: u32,
+    gain: f32,
+    buffer_size : usize,
+    buffer_index : usize,
+    channels : usize,
+    //TODO possibly encapsulate this stuff as its own thing
+    thalweg : Sample<'static, Complex<f32>, AudioSample>,
+    fft_size : usize,
+    transform : Option<Arc<FFT<f32>>>,
+    inverse_transform : Option<Arc<FFT<f32>>>,
+    filter : Option<Vec<Complex<f32>>>,
+    time_ring_buffer : Vec<Complex<f32>>,
+    complex_freq_buffer : Vec<Complex<f32>>
 }
+//http://www.texasthestateofwater.org/screening/html/gloassary.html
+/*
+Thalweg: The river's longitudinal section, or the line joining the 
+deepest point in the channel at each stage from source to mouth.
+*/
 
-fn process(transform, filter, inverse_transform) {
 
-    //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
-    //Here we transform the signal from the time domain to the frequency domain.
-    //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
-    fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
+impl AudioStream {
+    fn new(&self) -> AudioStream {
 
-    //the analytic array acts as a filter, removing the negative and dc portions
-    //of the signal as well as filtering out the nyquist portion of the signal
-    //Also applies the hamming window here
+    }
+    //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
+    //We actually update the time index and the sample buffer
+    fn clean_stream(&self, sample_buffer : &Vec<Complex<f32>>, data : Vec<f32>) {
+        //should assert that split point is indeed the middle of the buffer
+        let (left, right) = sample_buffer.split_at_mut(self.fft_size);
+        //This takes the buffer input to the stream and then begins describing the
+        //input using complex values on a unit circle.
+        let buff_usize = *self.buffer_size as usize;
+        let time_usize_idx = *self.time_index as usize;
+        for ((x, t0), t1) in data.chunks(*self.channels)
+            .zip(left[time_usize_idx..(time_usize_idx + buff_usize)].iter_mut())
+            .zip(right[time_usize_idx..(time_usize_idx + buff_usize)].iter_mut())
+        {
+            let mono = Complex::new(self.gain * (x[0] + x[1]) / 2.0, 0.0);
+            *t0 = mono;
+            *t1 = mono;
+        }
+        //this updates the time index as we continue to sample the audio stream
+        *self.time_index = ((time_usize_idx + buff_usize) % self.fft_size).try_into().unwrap();
+    }
 
-    // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
-    if use_analytic_filt {
-        for (x, y) in analytic.iter().zip(complex_freq_buffer.iter_mut()) {
-            *y = *x * *y;
+    fn coalece() {
+
+    }
+
+    // fn process(transform : Option<fn()>, filter : Option<fn()>, inverse_transform : Option<fn()>) {
+    fn process(&self) {
+
+        //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
+        //Here we transform the signal from the time domain to the frequency domain.
+        //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
+        // fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
+        if let Some(_) = self.transform {
+            let transform_func = self.transform.unwrap();
+            transform_func.process(self.time_ring_buffer, self.complex_freq_buffer);
+        }
+
+        //the analytic array acts as a filter, removing the negative and dc portions
+        //of the signal as well as filtering out the nyquist portion of the signal
+        //Also applies the hamming window here
+
+        // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
+        if let Some(_) = self.filter {
+            let filter_func = self.filter.unwrap();
+            filter_func(self.complex_freq_buffer);
+            // for (x, y) in analytic.iter().zip(complex_freq_buffer.iter_mut()) {
+            //     *y = *x * *y;
+            // }
+        }
+        // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
+        // time domain. However now this signal can be represented as a series of points on a unit circle.
+        // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
+        if let Some(_) = self.inverse_transform {
+            let inverse_func = self.transform.unwrap();
+            inverse_func.process(self.time_ring_buffer, self.complex_freq_buffer);
         }
     }
-    // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
-    // time domain. However now this signal can be represented as a series of points on a unit circle.
-    // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
-}
 
-fn post_process() {
-}
+    //leave blank for now but this should be some optional step
+    // fn post_process() {
+    // }
 
 
-fn package() {
-    if use_analytic_filt {
-        analytic_buffer[0] = analytic_buffer[buffer_size];
-        analytic_buffer[1] = analytic_buffer[buffer_size + 1];
-        analytic_buffer[2] = analytic_buffer[buffer_size + 2];
+    fn package() {
+        if use_analytic_filt {
+            analytic_buffer[0] = analytic_buffer[buffer_size];
+            analytic_buffer[1] = analytic_buffer[buffer_size + 1];
+            analytic_buffer[2] = analytic_buffer[buffer_size + 2];
+        }
+        // time domain. However now this signal can be represented as a series of points on a unit circle.
+        // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
+        let scale = fft_size as f32;
+        let freq_res = SAMPLE_RATE as f32 / scale;
+        // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
+        //this takes 256 points from the complex_freq_buffer into the analytic_buffer
+        // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
+        let freq_iter = complex_freq_buffer.iter().zip(analytic_buffer.iter_mut());
+        for (freq_idx, (&x, y)) in freq_iter.enumerate() {
+            let diff = x - prev_input; // vector
+            prev_input = x;
+
+            let angle = get_angle(diff, prev_diff).abs().log2().max(-1.0e12); // angular velocity (with processing)
+            prev_diff = diff;
+
+            let output = angle_lp(angle);
+
+            let sample_freq = freq_res * freq_idx as f32;
+
+            *y = Vec4 { vec: [
+                // save the scaling for later
+                x.re,
+                x.im,
+                sample_freq, // smoothed angular velocity
+                noise_lp((angle - output).abs()), // average angular noise
+            ]};
+        }
+
+        //what is rendered and why would dropped represent its inverse ?
+        let dropped = {
+            let mut buffer = buffers[buffer_index].lock().unwrap();
+            let rendered = buffer.rendered;
+            buffer.analytic.copy_from_slice(&analytic_buffer);
+            buffer.rendered = false;
+            !rendered
+        };
     }
-    // time domain. However now this signal can be represented as a series of points on a unit circle.
-    // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
-    let scale = fft_size as f32;
-    let freq_res = SAMPLE_RATE as f32 / scale;
-    // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
-    //this takes 256 points from the complex_freq_buffer into the analytic_buffer
-    // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
-    let freq_iter = complex_freq_buffer.iter().zip(analytic_buffer.iter_mut());
-    for (freq_idx, (&x, y)) in freq_iter.enumerate() {
-        let diff = x - prev_input; // vector
-        prev_input = x;
+    //TODO, come up with a better name here
+    fn check_valve() {
 
-        let angle = get_angle(diff, prev_diff).abs().log2().max(-1.0e12); // angular velocity (with processing)
-        prev_diff = diff;
-
-        let output = angle_lp(angle);
-
-        let sample_freq = freq_res * freq_idx as f32;
-
-        *y = Vec4 { vec: [
-            // save the scaling for later
-            x.re,
-            x.im,
-            sample_freq, // smoothed angular velocity
-            noise_lp((angle - output).abs()), // average angular noise
-        ]};
+        buffer_index = (buffer_index + 1) % num_buffers;
+        if dropped {
+            // what does sender do generally ?
+            sender.send(()).ok();
+        }
+        Continue
     }
 
-    //what is rendered and why would dropped represent its inverse ?
-    let dropped = {
-        let mut buffer = buffers[buffer_index].lock().unwrap();
-        let rendered = buffer.rendered;
-        buffer.analytic.copy_from_slice(&analytic_buffer);
-        buffer.rendered = false;
-        !rendered
-    };
 }
 
-fn finalize() {
-
-    buffer_index = (buffer_index + 1) % num_buffers;
-    if dropped {
-        // what does sender do generally ?
-        sender.send(()).ok();
-    }
-    Continue
-}
 
 fn callback_function() {
     //open_stream()
