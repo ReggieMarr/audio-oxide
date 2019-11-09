@@ -26,6 +26,8 @@ mod pixel;
 mod audio_stream;
 //mod audio_stream::callbacks;
 
+#[macro_use]
+extern crate lazy_static;
 use audio_stream::init_audio_simple as other_init_audio_simple;
 use audio_stream::Scalar;
 use audio_stream::callbacks;

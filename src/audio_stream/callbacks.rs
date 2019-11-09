@@ -85,6 +85,7 @@ impl EventHandler for Callback {
     // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
     //this takes 256 points from the complex_freq_buffer into the analytic_buffer
     // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
+
     let freq_iter = complex_freq_buffer.iter().zip(analytic_buffer.iter_mut());
     for (freq_idx, (&x, y)) in freq_iter.enumerate() {
         let diff = x - prev_input; // vector

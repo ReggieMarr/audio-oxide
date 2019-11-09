@@ -38,17 +38,37 @@ struct AudioPoint {
     //the frequency of the point of the unit circle
     sample_freq : f32,
     //average angular noise
-    angular_noise : f32
+    angular_noise : f32,
     //optionally we could also add angular velocity here
+    angulat_velocity : f32,
 }
 
 struct AudioSample {
-    buffer : Vec<AudioPoint>
+    // buffer : Vec<AudioPoint>
+    //a single point on a complex unit circle
+    complex_point : Complex<f32>,
+    //the frequency of the point of the unit circle
+    sample_freq : f32,
+    //average angular noise
+    angular_noise : f32,
+    //optionally we could also add angular velocity here
+    angular_velocity : f32,
+}
+
+impl Default for AudioSample {
+    fn default() {
+        AudioStream {
+            complex_point : Complex::new(0.0f32, 0.0f32),
+            sample_freq : 0.0f32,
+            angular_noise : 0.0f32,
+            angular_velocity : 0.0f32,
+        }
+    }
 }
 
 pub struct AudioBuffer {
     pub rendered: bool,
-    pub analytic: AudioSample,
+    pub analytic: Vec<AudioSample>,
 }
 
 pub const SAMPLE_RATE: f64 = 44_100.0;
@@ -84,6 +104,7 @@ struct AudioStream {
     //TODO possibly encapsulate this stuff as its own thing
     thalweg : Sample<'static, Complex<f32>, AudioSample>,
     fft_size : usize,
+    //maybe we should just implement fft on audiostream
     transform : Option<Arc<FFT<f32>>>,
     inverse_transform : Option<Arc<FFT<f32>>>,
     filter : Option<Vec<Complex<f32>>>,
@@ -92,10 +113,9 @@ struct AudioStream {
 }
 //http://www.texasthestateofwater.org/screening/html/gloassary.html
 /*
-Thalweg: The river's longitudinal section, or the line joining the 
+Thalweg: The river's longitudinal section, or the line joining the
 deepest point in the channel at each stage from source to mouth.
 */
-
 
 impl AudioStream {
     fn new(&self) -> AudioStream {
@@ -164,19 +184,24 @@ impl AudioStream {
     // }
 
 
-    fn package() {
+    fn package(&self) {
+        //let mut static analytic_buffer : Vec<AudioSample> = vec![AudioSample::default(); self.buffer_size + 3];
+        lazy_static! {
+            static ref analytic_buffer : Vec<AudioSample> = vec![AudioSample::default(); self.buffer_size + 3];
+        }
         if use_analytic_filt {
-            analytic_buffer[0] = analytic_buffer[buffer_size];
-            analytic_buffer[1] = analytic_buffer[buffer_size + 1];
-            analytic_buffer[2] = analytic_buffer[buffer_size + 2];
+            analytic_buffer[0] = analytic_buffer[self.buffer_size];
+            analytic_buffer[1] = analytic_buffer[self.buffer_size + 1];
+            analytic_buffer[2] = analytic_buffer[self.buffer_size + 2];
         }
         // time domain. However now this signal can be represented as a series of points on a unit circle.
         // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
-        let scale = fft_size as f32;
+        let scale = self.fft_size as f32;
         let freq_res = SAMPLE_RATE as f32 / scale;
         // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
         //this takes 256 points from the complex_freq_buffer into the analytic_buffer
         // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
+
         let freq_iter = complex_freq_buffer.iter().zip(analytic_buffer.iter_mut());
         for (freq_idx, (&x, y)) in freq_iter.enumerate() {
             let diff = x - prev_input; // vector
@@ -187,15 +212,14 @@ impl AudioStream {
 
             let output = angle_lp(angle);
 
-            let sample_freq = freq_res * freq_idx as f32;
+            let freq_idx = freq_res * freq_idx as f32;
 
-            *y = Vec4 { vec: [
-                // save the scaling for later
-                x.re,
-                x.im,
-                sample_freq, // smoothed angular velocity
+            *y = AudioSample {
+                complex_point : x,
+                sample_freq : freq_idx,
                 noise_lp((angle - output).abs()), // average angular noise
-            ]};
+                output.exp2(),
+            }
         }
 
         //what is rendered and why would dropped represent its inverse ?
@@ -251,7 +275,7 @@ fn callback_function() {
     //finalize()
     //Note: The audio sample is defined as the input given at the process,
     //or post process if there is one, and then the outut of packaging
-    pre_process()
+    //pre_process()
 
 }
 
