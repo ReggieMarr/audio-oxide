@@ -7,6 +7,7 @@ It also republishes the module audiovisual. Used to project audio data, visually
 
 */
 pub mod audiovisual;
+use arr_macro::arr;
 /*
 This is a struct which represents a sample.
 The sample is created by providing some series of data points.
@@ -14,10 +15,10 @@ Optionally we may provide the scope by which these data points fall under.
 If the scope is not provided it is assumed the scope is defined as [0;sizeof(sample)]
 If some transform function is provided then the
 */
-pub struct Sample<'a, SampleType,TransformType> {
+pub struct Sample<'a, SampleType> {
     data_points : &'a Vec<SampleType>,
     scope : Scope,
-    output_data : Option<TransformType>,
+    output_data : Option<SampleType>,
     /*
     Might want to have a "mapped data type"
     which maps the data uniformly to an array the
@@ -29,22 +30,55 @@ enum UpdateType {
     WithNewSample,
     WithNewFunction
 }
+const FFT_SIZE        : f32   = 1024;
 
-impl<T,R : Default> Sample::<'_, T, R> {
-    //DANGER! No idea what &'static does, it may make it difficult to implement the update funciton
-    fn new(input_data : &'static Vec<T>, input_scope : Scope, data_transform : Option<fn(&Vec<T>,&R)>)
-        ->Sample<T,R>{
-        let mut output : Option<R> = None;
-        if let Some(_gen_func) = data_transform {
-            let transform_func = data_transform.unwrap();
-            let output_ref :&R;
-            transform_func(&input_data, output_ref);
-            output = Some(*output_ref);
+const NUM_TRANSFORM_OPTIONS = 3
+pub struct Transform_Options<SourceType> {
+    transform         : Option<dyn Fn(&mut [SourceType; FFT_SIZE], &mut [SourceType; FFT_SIZE])>,
+    filter            : Option<dyn Fn(&mut [SourceType; FFT_SIZE], [SourceType; FFT_SIZE])>,
+    inverse_transform : Option<dyn Fn(&mut [SourceType; FFT_SIZE], &mut [SourceType; FFT_SIZE])>
+    //should try anddo this in an array
+    options           : [Option; NUM_TRANSFORM_OPTIONS],
+}
+
+//impl<SourceType> {
+//
+//}
+
+impl<T : Default> Sample::<'_, T> {
+    //I feel like this could be implemented using traits on Transform_Options
+    fn new(input_data : &'static Vec<T>, input_scope : Scope, transform_opt : Transform_Options<T>)->Self{
+        let input : [T ; FFT_SIZE] = arr![T; FFT_SIZE];
+        if  let Some(_) = transform_opt.transform {
+            let transform_func = transform_opt.transform.unwrap();
+            let output = input_data.clone();
+            transform_func(&input, &output);
+            input = output;
         }
+        if  let Some(_) = transform_opt.transform {
+            let filter_func = transform_opt.filter.unwrap();
+            /*
+               this is roughly how it should go down
+               | input, coefficient | {
+               for input_idx in index.ter() {
+                    input_idx = input_idx * coeffcient[input_idx.index];
+               }
+               }
+            */
+            input = filter(&input);
+        }
+        if  let Some(_) = transform_opt.inverse_transform {
+            let transform_func = transform_opt.inverse_transform.unwrap();
+            let output = input_data.clone();
+            transform_func(&input, &output);
+            input = output;
+        }
+
+
         Sample {
             data_points : &input_data,
             scope : input_scope,
-            output_data : output
+            output_data : input
         }
     }
 

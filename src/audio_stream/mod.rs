@@ -55,6 +55,8 @@ impl Default for AudioSample {
     }
 }
 
+//The only reason we really need this is the rendered
+//attribute. Dropping for now
 pub struct AudioBuffer {
     pub rendered: bool,
     pub analytic: Vec<AudioSample>,
@@ -68,32 +70,41 @@ const ANGLE_CUTOFF    : f32   = 0.01;
 const ANGLE_Q         : f32   = 0.5;
 const NOISE_CUTOFF    : f32   = 0.01;
 const NOISE_Q         : f32   = 0.5;
-const FFT_SIZE        : usize = 1024;
+const FFT_SIZE        : f32   = 1024;
 const NUM_BUFFERS     : usize = 256;
 const BUFF_SIZE       : usize = 256;
 const GAIN            : f32   = 1.0;
 
 use crate::signal_processing::Sample;
 
-// struct Thalweg<SourceType, MouthType> {
-//     source : Sample<'static, SourceType, MouthType>
-
-// }
-
-// impl<SourceType, MouthType> Thalweg<SourceType, MouthType> {
-//     fn new() {
-
+//struct Thalweg<SourceType, SinkType> {
+//struct Thalweg<SourceType> {
+//    source            : Sample<'static, SourceType, SourceType>,
+//    transform         : Option<dyn Fn(&mut [SourceType], &mut [SourceType])>,
+//    //filter            : Option< |in, filter| =
+//    inverse_transform : Option<dyn Fn(&mut [SourceType], &mut [SourceType])>
+//}
+//
+//impl<SourceType> Thalweg<SourceType> {
+//     fn new(&self) {
+//         if let Some(_) = &self.transform {
+//             let transform_func = self.transform.unwrap();
+//             let output_ref : SourceType;
+//             transform_func(&self.input, &output_ref);
+//             output = Some(*output_ref);
+//         }
+//
 //     }
 //     fn coalece(&self) {
-
+//
 //     }
 // }
 
 //TODO consider creating a more generic samplestream that
 //we can make into an audiostream
 struct AudioStream {
-    time_index              : u32,
-    buffer                  : Arc<Vec<AudioBuffer>>,
+    //buffer                  : Arc<Vec<AudioBuffer>>,
+    buffer                  : Arc<[[AudioSample; BUFF_SIZE]; NUM_BUFFERS]>,
     //TODO possibly encapsulate this stuff as its own thing
     thalweg                 : Sample<'static, Complex<f32>, AudioSample>,
     //maybe we should just implement fft on audiostream
@@ -114,7 +125,6 @@ struct AudioStream {
 Thalweg: The river's longitudinal section, or the line joining the
 deepest point in the channel at each stage from source to mouth.
 */
-
 impl AudioStream {
     fn new(&self) -> AudioStream {
 
@@ -122,38 +132,44 @@ impl AudioStream {
     //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
     //We actually update the time index and the sample buffer
     fn clean_stream(&self, sample_buffer : &Vec<Complex<f32>>, data : Vec<f32>) {
+        static mut time_index : usize = 0;
         //should assert that split point is indeed the middle of the buffer
         let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
         //This takes the buffer input to the stream and then begins describing the
         //input using complex values on a unit circle.
-        let buff_usize = *self.buffer_size as usize;
-        let time_usize_idx = *self.time_index as usize;
         for ((x, t0), t1) in data.chunks(CHANNELS)
-            .zip(left[time_usize_idx..(time_usize_idx + buff_usize)].iter_mut())
-            .zip(right[time_usize_idx..(time_usize_idx + buff_usize)].iter_mut())
+            .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
+            .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
         {
-            let mono = Complex::new(self.gain * (x[0] + x[1]) / 2.0, 0.0);
+            let mono = Complex::new(GAIN * (x[0] + x[1]) / 2.0, 0.0);
             *t0 = mono;
             *t1 = mono;
         }
         //this updates the time index as we continue to sample the audio stream
-        *self.time_index = ((time_usize_idx + buff_usize) % FFT_SIZE).try_into().unwrap();
+        time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
     }
 
     fn coalece() {
 
     }
 
-    // fn process(transform : Option<fn()>, filter : Option<fn()>, inverse_transform : Option<fn()>) {
+
+    /*
+     Takes some stream and does some sort of process
+     Right now this goes like
+     Transform (optional) -> filter(optional) -> Inverse Transform (optional)
+     NOTE: The input type and size of this stream and output is always the same
+     */
     fn process(&self) {
 
         //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
         //Here we transform the signal from the time domain to the frequency domain.
         //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
         // fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
+        static mut complex_freq_buffer : [Complex<f32>; FFT_SIZE] = [Complex::new(0.0, 0.0); FFT_SIZE];
         if let Some(_) = self.transform {
             let transform_func = self.transform.unwrap();
-            transform_func.process(self.time_ring_buffer, self.complex_freq_buffer);
+            transform_func.process(self.time_ring_buffer, complex_freq_buffer);
         }
 
         //the analytic array acts as a filter, removing the negative and dc portions
@@ -177,18 +193,12 @@ impl AudioStream {
         }
     }
 
-    //leave blank for now but this should be some optional step
-    // fn post_process() {
-    // }
-
-
     //This might actually make sense to be its own scope
     fn package(&self) {
         static mut analytic_buffer : Vec<AudioSample> = Vec::with_capacity(BUFF_SIZE + 3);//vec![AudioSample::default(); self.buffer_size + 3];
         //this should be stuck to the type used in self
         static mut prev_input : Complex<f32> = Complex::new(0.0, 0.0);
         static mut prev_diff : Complex<f32> = Complex::new(0.0, 0.0);
-        static mut buffer_index : usize = 0;
         //These are both config values
         let angle_lp = get_lowpass(ANGLE_CUTOFF, ANGLE_Q);
         let noise_lp = get_lowpass(NOISE_CUTOFF, NOISE_Q);
@@ -197,14 +207,10 @@ impl AudioStream {
             analytic_buffer[1] = analytic_buffer[BUFF_SIZE + 1];
             analytic_buffer[2] = analytic_buffer[BUFF_SIZE + 2];
         }
-        // time domain. However now this signal can be represented as a series of points on a unit circle.
-        // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
-        let scale = FFT_SIZE as f32;
-        let freq_res = SAMPLE_RATE as f32 / scale;
+        let freq_res = SAMPLE_RATE as f32 / FFT_SIZE;
         // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
         //this takes 256 points from the complex_freq_buffer into the analytic_buffer
         // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
-
         let freq_iter = self.complex_freq_buffer.iter().zip(analytic_buffer.iter_mut());
         for (freq_idx, (&x, y)) in freq_iter.enumerate() {
             let diff = x - prev_input; // vector
@@ -225,6 +231,7 @@ impl AudioStream {
             }
         }
 
+        static mut buffer_index : usize = 0;
         //what is rendered and why would dropped represent its inverse ?
         let dropped = {
             let mut buffer = self.buffer[buffer_index].lock().unwrap();
@@ -234,16 +241,17 @@ impl AudioStream {
             !rendered
         };
         buffer_index = (buffer_index + 1) % NUM_BUFFERS;
+        dropped
     }
     //TODO, come up with a better name here
-    fn check_valve(dropped : bool) {
+    // fn check_valve(dropped : bool) {
 
-        if dropped {
-            // what does sender do generally ?
-            sender.send(()).ok();
-        }
-        Continue
-    }
+    //     if dropped {
+    //         // what does sender do generally ?
+    //         sender.send(()).ok();
+    //     }
+    //     Continue
+    // }
 
 }
 
@@ -258,13 +266,6 @@ fn callback_function() {
     Takes some stream, cleans it (optionally)
     and updates process variables
     */
-    //process()
-    /*
-     Takes some stream and does some sort of process
-     Right now this goes like
-     Transform (optional) -> filter(optional) -> Inverse Transform (optional)
-     NOTE: The input type and size of this stream and output is always the same
-     */
     //post_process()
     /*
        does some sort of post-processing
@@ -309,29 +310,21 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     // the sample rate of the mic and the amount values we want
     let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, buffer_size as u32);
 
-    let mut buffers = Vec::with_capacity(num_buffers);
+    let mut audio_buffer : [[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS];
 
-    for _ in 0..num_buffers {
-        buffers.push(Mutex::new(AudioBuffer {
-            rendered: true,
-            //why is this buffer_size + 3?
-            // analytic: vec![Vec4 {vec: [0.0, 0.0, 0.0, 0.0]}; buffer_size + 3],
-            analytic: vec![Vec4 {vec: [0.0, 0.0, 0.0, 0.0]}; fft_size],
-        }));
+    //may want to replace this with a map call
+    for buff_idx in 0..NUM_BUFFERS {
+        for sample_idx in 0..BUFF_SIZE {
+            audio_buffer[buff_idx][sample_idx] = Mutex::new(AudioSample::default());
+        }
     }
     //This creates a thread safe reference counting pointer to buffers
-    let buffers = Arc::new(buffers);
-
+    //Safe Audio Reference (SAR)
+    let sar_buff = Arc::new(audio_buffer);
     // This is a lambda which I want called with the samples
     let (receiver, callback) = {
-        let mut buffer_index = 0;
         let (sender, receiver) = mpsc::channel();
-        let gain = 1.0;//config.audio.gain;
-        let buffers = buffers.clone();
-        let mut analytic_buffer = vec![Vec4 {vec: [0.0, 0.0, 0.0, 0.0]}; buffer_size + 3];
-
-        let mut time_index = 0;
-        let mut time_ring_buffer = vec![Complex::new(0.0, 0.0); 2 * fft_size];
+        let local_sar = sar_buff.clone();
         // this gets multiplied to convolve stuff
         let mut complex_freq_buffer = vec![Complex::new(0.0f32, 0.0); fft_size];
         let mut complex_analytic_buffer = vec![Complex::new(0.0f32, 0.0); fft_size];
@@ -350,11 +343,10 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
             analytic = make_analytic(n, fft_size);
             analytic_size = buffer_size + 3;
         }
-        let mut analytic_buffer = vec![Vec4 {vec: [0.0, 0.0, 0.0, 0.0]}; analytic_size];
         let mut fft_planner = FFTplanner::new(false);
-        let fft = fft_planner.plan_fft(fft_size);
-        // let mut ifft_planner = FFTplanner::new(true);
-        // let ifft = ifft_planner.plan_fft(fft_size);
+        let fft = fft_planner.plan_fft(FFT_SIZE);
+        let mut ifft_planner = FFTplanner::new(true);
+        let ifft = ifft_planner.plan_fft(FFT_SIZE);
 
         let mut prev_input = Complex::new(0.0, 0.0); // sample n-1
         let mut prev_diff = Complex::new(0.0, 0.0); // sample n-1 - sample n-2
@@ -377,7 +369,7 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     // Registers the callback with PortAudio
     let mut stream = pa.open_non_blocking_stream(settings, callback)?;
 
-    Ok((stream, buffers))
+    Ok((stream, sar_buff))
 }
 
 
