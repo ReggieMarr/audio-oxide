@@ -15,25 +15,25 @@ enum UpdateType {
 }
 const FFT_SIZE        : f32   = 1024;
 
-const NUM_TRANSFORM_OPTIONS = 3
+const NUM_TRANSFORM_OPTIONS : usize = 3;
 pub struct Transform_Options<SourceType> {
     transform         : Option<dyn Fn(&mut [SourceType; FFT_SIZE], &mut [SourceType; FFT_SIZE])>,
     filter            : Option<dyn Fn(&mut [SourceType; FFT_SIZE], [SourceType; FFT_SIZE])>,
     inverse_transform : Option<dyn Fn(&mut [SourceType; FFT_SIZE], &mut [SourceType; FFT_SIZE])>
     //should try anddo this in an array
-    options           : [Option; NUM_TRANSFORM_OPTIONS],
+    //options           : [Option; NUM_TRANSFORM_OPTIONS],
 }
 
-impl<SourceType> for Transform_Options<SourceType> {
-    fn cycle_through(&self, input : [SourceType; FFT_SIZE])-> output : [SourceType; FFT_SIZE] {
+impl<SourceType : Default> Transform_Options<SourceType> {
+    fn cycle_through(&self, input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
         //let input : [T ; FFT_SIZE] = arr![T; FFT_SIZE];
         //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
         //Here we transform the signal from the time domain to the frequency domain.
         //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
         // fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
         if  let Some(_) = self.transform_opt.transform {
-            let transform_func = transform_opt.transform.unwrap();
-            let output = input_data.clone();
+            let transform_func = self.transform_opt.transform.unwrap();
+            let output = input.clone();
             transform_func(&input, &output);
             input = output;
         }
@@ -43,7 +43,7 @@ impl<SourceType> for Transform_Options<SourceType> {
 
         // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
         if  let Some(_) = self.transform_opt.filter {
-            let filter_func = transform_opt.filter.unwrap();
+            let filter_func = self.transform_opt.filter.unwrap();
             /*
                this is roughly how it should go down
                | input, coefficient | {
@@ -52,14 +52,14 @@ impl<SourceType> for Transform_Options<SourceType> {
                }
                }
             */
-            input = filter(&input);
+            input = filter_func(&input);
         }
         // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
         // time domain. However now this signal can be represented as a series of points on a unit circle.
         // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
         if  let Some(_) = self.transform_opt.inverse_transform {
-            let transform_func = transform_opt.inverse_transform.unwrap();
-            let output = input_data.clone();
+            let transform_func = self.transform_opt.inverse_transform.unwrap();
+            let output = input.clone();
             transform_func(&input, &output);
             input = output;
         }
@@ -74,10 +74,10 @@ Optionally we may provide the scope by which these data points fall under.
 If the scope is not provided it is assumed the scope is defined as [0;sizeof(sample)]
 If some transform function is provided then the
 */
-pub struct Sample<'a, SampleType> {
+pub struct Sample<'a, SampleType, ReturnType> {
     data_points : &'a Vec<SampleType>,
     scope : Scope,
-    output_data : Option<SampleType>,
+    output_data : Option<ReturnType>,
     /*
     Might want to have a "mapped data type"
     which maps the data uniformly to an array the
@@ -85,10 +85,10 @@ pub struct Sample<'a, SampleType> {
     */
 }
 
-impl<T : Default> Sample::<'_, T> {
+impl<T, R> Sample::<'_, T, R> {
     //I feel like this could be implemented using traits on Transform_Options
-    fn new(input_data : &'static [T; FFT_SIZE], input_scope : Scope, transform_opt : Transform_Options<T>)->Self{
-        let ouput = transform_opt.cycle_through(input_data);
+    fn new(input_data : &'static [T; FFT_SIZE], input_scope : Scope, transform_opt : Transform_Options<R>)->Self{
+        let output = transform_opt.cycle_through(input_data);
 
         Sample {
             data_points : &input_data,

@@ -77,13 +77,15 @@ const GAIN            : f32   = 1.0;
 
 use crate::signal_processing::{Sample, Transform_Options};
 
-trait Coalece {
-    fn coalece(&self, input_adc : &Vec<DataStreamType>)->std::io::Result(bool) {
-        self.clean_stream(input_adc);
-        self.thalweg.update(input_adc);
-        Ok(self.package())
-    }
-}
+
+//Figure out how to do this
+//impl<DataStreamType> Coalece for AudioStream<DataStreamType> {
+//    fn coalece(&self, input_adc : &DataStreamType)->std::io::Result<bool> {
+//        self.clean_stream(input_adc);
+//        self.thalweg.update(input_adc);
+//        Ok(self.package())
+//    }
+//}
 
 //TODO consider creating a more generic samplestream that
 //we can make into an audiostream
@@ -92,31 +94,17 @@ struct AudioStream<DataStreamType> {
     buffer                  : Arc<[[AudioSample; BUFF_SIZE]; NUM_BUFFERS]>,
     //TODO possibly encapsulate this stuff as its own thing
     thalweg                 : Sample<'static, DataStreamType, AudioSample>,
-    //maybe we should just implement fft on audiostream
-    //transform               : Option<Arc<FFT<f32>>>,
-    //time_ring_buffer        : [Complex<f32>; 2 * FFT_SIZE],
-    ////this maybe should be called convolution buffer
-    //complex_freq_buffer     : [Complex<f32>; FFT_SIZE],
-    //filter                  : Option<[Complex<f32>; FFT_SIZE]>,
-    //inverse_transform       : Option<Arc<FFT<f32>>>,
-    //complex_analytic_buffer : [Complex<f32>; FFT_SIZE],
 }
-//http://www.texasthestateofwater.org/screening/html/gloassary.html
-/*
-    time_ring_buffer[Complex<f32>; 2*FFT_SIZE] -> complex_freq_buffer[Complex<f32>; FFT_SIZE]
 
-*/
-/*
-Thalweg: The river's longitudinal section, or the line joining the
-deepest point in the channel at each stage from source to mouth.
-*/
 impl<DataStreamType> AudioStream<DataStreamType> {
-    //fn new(&self, transform_opt : Transform_Options<DataStreamType>, window : )->Self {
-    //
-    //}
+    fn coalece(&self, input_adc : &DataStreamType)->std::io::Result<bool> {
+        self.clean_stream(input_adc);
+        self.thalweg.update(input_adc);
+        Ok(self.package())
+    }
     //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
     //We actually update the time index and the sample buffer
-    fn clean_stream(&self, sample_buffer : &Vec<Complex<f32>>, data : Vec<f32>) {
+    fn clean_stream(&self, sample_buffer : &Vec<Complex<f32>>, data : DataStreamType) {
         static mut time_index : usize = 0;
         //should assert that split point is indeed the middle of the buffer
         let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
@@ -186,27 +174,12 @@ impl<DataStreamType> AudioStream<DataStreamType> {
         buffer_index = (buffer_index + 1) % NUM_BUFFERS;
         dropped
     }
-    //TODO, come up with a better name here
-    // fn check_valve(dropped : bool) {
-
-    //     if dropped {
-    //         // what does sender do generally ?
-    //         sender.send(()).ok();
-    //     }
-    //     Continue
-    // }
 
 }
+const UNKNOWN: usize = 5;
 
 
 pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
-    let fft_size = 1024;//config.fft_bins as usize;
-    //Found that I had to change the buffer size to 512, not sure if this is really
-    //neccessary but for some reason if I don't do this then I only get half the spectrum
-    let buffer_size = 256;//config.audio.buffer_size as usize;
-    let num_buffers = 16; //config.audio.num_buffers;
-    let cutoff = 0.01;
-    let q = 0.5;//config.audio.q;
     let pa = PortAudio::new().expect("Unable to init portaudio");
 
     let def_input = pa.default_input_device().expect("Unable to get default device");
@@ -224,7 +197,7 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     // Settings for an inputstream.
     // Here we pass the stream parameters we set before,
     // the sample rate of the mic and the amount values we want
-    let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, buffer_size as u32);
+    let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, BUFF_SIZE as u32);
 
     let mut audio_buffer : [[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS];
 
@@ -241,13 +214,11 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     let (receiver, callback) = {
         let (sender, receiver) = mpsc::channel();
         let local_sar = sar_buff.clone();
-        // this gets multiplied to convolve stuff
-        let mut complex_freq_buffer = vec![Complex::new(0.0f32, 0.0); fft_size];
-        let mut complex_analytic_buffer = vec![Complex::new(0.0f32, 0.0); fft_size];
+        let init_data : Vec<f32> = vec![0.0; FFT_SIZE];
         let mut audio_sample : Sample::<'_,Complex<f32>,Complex<f32>>;
 
         let use_analytic_filt = false;
-        let mut analytic_size = fft_size;
+        let mut analytic_size = FFT_SIZE;
         let mut analytic : Vec<Complex<f32>> = Vec::with_capacity(analytic_size);
 
 
@@ -262,24 +233,28 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
         }
         let mut fft_planner = FFTplanner::new(false);
         let fft = fft_planner.plan_fft(FFT_SIZE);
-        let fft_closure = | input, output | = {
+        let fft_closure = | input, output | {
             fft.process(input, output);
-        }
+        };
         let analytic_filt_closure = | coeffcient, input | {
             for (x, y) in coeffcient.iter().zip(input.iter_mut()) {
                 *y = *x * *y;
             }
-        }
+        };
         //let mut ifft_planner = FFTplanner::new(true);
         //let ifft = ifft_planner.plan_fft(FFT_SIZE);
         let transform_opt = Transform_Options {
             transform : Some(fft_closure),
             filter : Some(analytic_filt_closure),
             inverse_transform : None,
-        }
+        };
 
+        let stream_handler = AudioStream<Vec<f32>> {
+            buffer : sar_buff,
+            thalweg : Sample::new(init_data, scope, transform_opt),
+        };
         (receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
-            if AudioStream.coalece(data) {
+            if stream_handler.coalece(data) {
                 sender.send(()).ok();
             }
             Continue

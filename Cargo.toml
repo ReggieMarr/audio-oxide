@@ -2,7 +2,7 @@
 name = "audio-oxide"
 version = "0.1.0"
 authors = ["reggiemarr <reginald.t.marr@gmail.com>"]
-edition = "2019"
+edition = "2018"
 
 [dependencies]
 bincode = "0.6"
