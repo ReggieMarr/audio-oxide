@@ -75,46 +75,31 @@ const NUM_BUFFERS     : usize = 256;
 const BUFF_SIZE       : usize = 256;
 const GAIN            : f32   = 1.0;
 
-use crate::signal_processing::Sample;
+use crate::signal_processing::{Sample, Transform_Options};
 
-//struct Thalweg<SourceType, SinkType> {
-//struct Thalweg<SourceType> {
-//    source            : Sample<'static, SourceType, SourceType>,
-//    transform         : Option<dyn Fn(&mut [SourceType], &mut [SourceType])>,
-//    //filter            : Option< |in, filter| =
-//    inverse_transform : Option<dyn Fn(&mut [SourceType], &mut [SourceType])>
-//}
-//
-//impl<SourceType> Thalweg<SourceType> {
-//     fn new(&self) {
-//         if let Some(_) = &self.transform {
-//             let transform_func = self.transform.unwrap();
-//             let output_ref : SourceType;
-//             transform_func(&self.input, &output_ref);
-//             output = Some(*output_ref);
-//         }
-//
-//     }
-//     fn coalece(&self) {
-//
-//     }
-// }
+trait Coalece {
+    fn coalece(&self, input_adc : &Vec<DataStreamType>)->std::io::Result(bool) {
+        self.clean_stream(input_adc);
+        self.thalweg.update(input_adc);
+        Ok(self.package())
+    }
+}
 
 //TODO consider creating a more generic samplestream that
 //we can make into an audiostream
-struct AudioStream {
+struct AudioStream<DataStreamType> {
     //buffer                  : Arc<Vec<AudioBuffer>>,
     buffer                  : Arc<[[AudioSample; BUFF_SIZE]; NUM_BUFFERS]>,
     //TODO possibly encapsulate this stuff as its own thing
-    thalweg                 : Sample<'static, Complex<f32>, AudioSample>,
+    thalweg                 : Sample<'static, DataStreamType, AudioSample>,
     //maybe we should just implement fft on audiostream
-    transform               : Option<Arc<FFT<f32>>>,
-    time_ring_buffer        : [Complex<f32>; 2 * FFT_SIZE],
-    //this maybe should be called convolution buffer
-    complex_freq_buffer     : [Complex<f32>; FFT_SIZE],
-    filter                  : Option<[Complex<f32>; FFT_SIZE]>,
-    inverse_transform       : Option<Arc<FFT<f32>>>,
-    complex_analytic_buffer : [Complex<f32>; FFT_SIZE],
+    //transform               : Option<Arc<FFT<f32>>>,
+    //time_ring_buffer        : [Complex<f32>; 2 * FFT_SIZE],
+    ////this maybe should be called convolution buffer
+    //complex_freq_buffer     : [Complex<f32>; FFT_SIZE],
+    //filter                  : Option<[Complex<f32>; FFT_SIZE]>,
+    //inverse_transform       : Option<Arc<FFT<f32>>>,
+    //complex_analytic_buffer : [Complex<f32>; FFT_SIZE],
 }
 //http://www.texasthestateofwater.org/screening/html/gloassary.html
 /*
@@ -125,10 +110,10 @@ struct AudioStream {
 Thalweg: The river's longitudinal section, or the line joining the
 deepest point in the channel at each stage from source to mouth.
 */
-impl AudioStream {
-    fn new(&self) -> AudioStream {
-
-    }
+impl<DataStreamType> AudioStream<DataStreamType> {
+    //fn new(&self, transform_opt : Transform_Options<DataStreamType>, window : )->Self {
+    //
+    //}
     //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
     //We actually update the time index and the sample buffer
     fn clean_stream(&self, sample_buffer : &Vec<Complex<f32>>, data : Vec<f32>) {
@@ -149,49 +134,7 @@ impl AudioStream {
         time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
     }
 
-    fn coalece() {
 
-    }
-
-
-    /*
-     Takes some stream and does some sort of process
-     Right now this goes like
-     Transform (optional) -> filter(optional) -> Inverse Transform (optional)
-     NOTE: The input type and size of this stream and output is always the same
-     */
-    fn process(&self) {
-
-        //This represents the amplitude of the signal represented as the distance from the origin on a unit circle
-        //Here we transform the signal from the time domain to the frequency domain.
-        //Note that humans can only hear sound with a frequency between 20Hz and 20_000Hz
-        // fft.process(&mut time_ring_buffer[time_index..time_index + fft_size], &mut complex_freq_buffer[..]);
-        static mut complex_freq_buffer : [Complex<f32>; FFT_SIZE] = [Complex::new(0.0, 0.0); FFT_SIZE];
-        if let Some(_) = self.transform {
-            let transform_func = self.transform.unwrap();
-            transform_func.process(self.time_ring_buffer, complex_freq_buffer);
-        }
-
-        //the analytic array acts as a filter, removing the negative and dc portions
-        //of the signal as well as filtering out the nyquist portion of the signal
-        //Also applies the hamming window here
-
-        // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
-        if let Some(_) = self.filter {
-            let filter_func = self.filter.unwrap();
-            filter_func(self.complex_freq_buffer);
-            // for (x, y) in analytic.iter().zip(complex_freq_buffer.iter_mut()) {
-            //     *y = *x * *y;
-            // }
-        }
-        // By applying the inverse fourier transform we transform the signal from the frequency domain back into the
-        // time domain. However now this signal can be represented as a series of points on a unit circle.
-        // ifft.process(&mut complex_freq_buffer[..], &mut complex_analytic_buffer[..]);
-        if let Some(_) = self.inverse_transform {
-            let inverse_func = self.transform.unwrap();
-            inverse_func.process(self.time_ring_buffer, self.complex_freq_buffer);
-        }
-    }
 
     //This might actually make sense to be its own scope
     fn package(&self) {
@@ -256,33 +199,6 @@ impl AudioStream {
 }
 
 
-fn callback_function() {
-    //open_stream()
-    /*
-       Starts up the whole process
-     */
-    //pre_process()
-    /*
-    Takes some stream, cleans it (optionally)
-    and updates process variables
-    */
-    //post_process()
-    /*
-       does some sort of post-processing
-       NOTE: The input and output type are the same although the length may not be
-    */
-    //package()
-    /*
-     This takes the stream and packages it into some output that will be streamed
-     NOTE this will likely change type and size of the input stream
-     */
-    //finalize()
-    //Note: The audio sample is defined as the input given at the process,
-    //or post process if there is one, and then the outut of packaging
-    //pre_process()
-
-}
-
 pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
     let fft_size = 1024;//config.fft_bins as usize;
     //Found that I had to change the buffer size to 512, not sure if this is really
@@ -334,35 +250,39 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
         let mut analytic_size = fft_size;
         let mut analytic : Vec<Complex<f32>> = Vec::with_capacity(analytic_size);
 
+
         if use_analytic_filt {
-            let mut n = fft_size - buffer_size;
+            let mut n = FFT_SIZE - BUFF_SIZE;
             if n % 2 == 0 {
                 n -= 1;
             }
             analytic.clear();
-            analytic = make_analytic(n, fft_size);
-            analytic_size = buffer_size + 3;
+            analytic = make_analytic(n, FFT_SIZE);
+            analytic_size = BUFF_SIZE + 3;
         }
         let mut fft_planner = FFTplanner::new(false);
         let fft = fft_planner.plan_fft(FFT_SIZE);
-        let mut ifft_planner = FFTplanner::new(true);
-        let ifft = ifft_planner.plan_fft(FFT_SIZE);
-
-        let mut prev_input = Complex::new(0.0, 0.0); // sample n-1
-        let mut prev_diff = Complex::new(0.0, 0.0); // sample n-1 - sample n-2
-        let mut angle_lp = get_lowpass(cutoff, q);
-        let mut noise_lp = get_lowpass(0.05, 0.7);
-        /*
-        pub struct InputCallbackArgs<'a, I: 'a> {
-            pub buffer: &'a [I],
-            pub frames: usize,
-            pub flags: CallbackFlags,
-            pub time: InputCallbackTimeInfo,
+        let fft_closure = | input, output | = {
+            fft.process(input, output);
         }
-        */
+        let analytic_filt_closure = | coeffcient, input | {
+            for (x, y) in coeffcient.iter().zip(input.iter_mut()) {
+                *y = *x * *y;
+            }
+        }
+        //let mut ifft_planner = FFTplanner::new(true);
+        //let ifft = ifft_planner.plan_fft(FFT_SIZE);
+        let transform_opt = Transform_Options {
+            transform : Some(fft_closure),
+            filter : Some(analytic_filt_closure),
+            inverse_transform : None,
+        }
 
         (receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
-            callback_function();
+            if AudioStream.coalece(data) {
+                sender.send(()).ok();
+            }
+            Continue
         })
     };
 
