@@ -14,15 +14,18 @@ const NUM_TRANSFORM_OPTIONS : usize = 3;
 //and for each trait that has been implemented (on our target struct)
 //we execute them and handle their output accordingly
 trait TransformOptionsTrait<SourceType> {
-    fn transform(&self, &mut [SourceType; FFT_SIZE])->([SourceType; FFT_SIZE]) {
+    fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
         // default implementation does nothing
     }
-    fn filter(&self, &mut [SourceType; FFT_SIZE])->([SourceType; FFT_SIZE]) {
+    //filter may have to have coeffcient as arg
+    fn filter(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
         // default implementation does nothing
     }
-    fn inverse_transform(&self, &mut [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+    fn inverse_transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
         // default implementation does nothing
     }
+    //utimately we need some way to check if any of these have been implemented in
+    //something like the cycle_through function
 }
 
 pub struct TransformOptions<SourceType>
