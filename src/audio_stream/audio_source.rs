@@ -1,8 +1,14 @@
-
+//This only handles the portaudio bindings
+//Note we should change the audiostream stuff to generic
+//but essentially we just need to give it an object which
+//contains the data reference and some implementation
+//that can be used in the call back to do some dsp
 use std::sync::mpsc;
-use rustfft::{FFTplanner, FFT};
-use num::complex::Complex;
-use glium::*;//{
+//use rustfft::{FFTplanner, FFT};
+//use num::complex::Complex;
+use std::sync::{Arc, Mutex};
+//No longer used, this was for opengl visualization
+//use glium::*;//{
     // Display,
     // Vertex,
     // Surface,
@@ -14,21 +20,24 @@ use glium::*;//{
 extern crate portaudio;
 use portaudio::{
     PortAudio,
-    Stream,
-    NonBlocking,
-    Input,
+    //Stream,
+    //NonBlocking,
+    //Input,
     StreamParameters,
     InputStreamSettings,
     InputStreamCallbackArgs,
     Continue,
 };
-mod common;
-use common::{
+use crate::audio_stream::common::{
     SAMPLE_RATE,
     NUM_BUFFERS,
     INTERLEAVED,
     BUFF_SIZE,
-    SAMPLE_RATE,
+    CHANNELS,
+    MultiBuffer,
+    PortAudioStream,
+    AudioSample,
+    AudioStream
 };
 
 

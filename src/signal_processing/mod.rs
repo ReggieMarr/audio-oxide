@@ -13,7 +13,8 @@ const NUM_TRANSFORM_OPTIONS : usize = 3;
 //What we actually want to do here is iterate through transform, filter, inverse, ect..FFT_SIZE
 //and for each trait that has been implemented (on our target struct)
 //we execute them and handle their output accordingly
-trait TransformOptionsTrait<SourceType> {
+pub trait TransformOptionsTrait<SourceType> {
+    type TransformBaseType;
     fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
         // default implementation does nothing
     }

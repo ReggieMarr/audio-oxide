@@ -1,4 +1,5 @@
 use num::complex::Complex;
+use std::sync::{Arc, Mutex};
 
 pub const SAMPLE_RATE : f64   = 44_100.0;
 pub const CHANNELS        : usize   = 2;

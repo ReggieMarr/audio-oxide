@@ -4,20 +4,50 @@ use std::sync::{Arc, Mutex};
 use arr_macro::arr;
 
 use num::complex::Complex;
-mod common;
-use common::{
+//defines (should get moved somewhere else)
+use crate::audio_stream::common::{
     FFT_SIZE,
     GAIN,
     BUFF_SIZE,
-    GAIN,
     ANGLE_Q,
     NOISE_Q,
     ANGLE_CUTOFF,
     NOISE_CUTOFF,
+    CHANNELS,
+    NUM_BUFFERS,
+    SAMPLE_RATE,
+};
+
+use crate::audio_stream::common::{
+    AudioSample,
+    AudioStream,
+    New,
+    Package,
+};
+use crate::signal_processing::{Sample, TransformOptionsTrait};
+
+impl<SourceType> TransformOptionsTrait<SourceType> for AudioStream<'_, SourceType> {
+    type TransformBaseType = f32;
+    //Should use this in planner and FFT but cant form some reason right now
+    fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+        static mut fft_planner : FFTplanner<f32> = FFTplanner::new(true);
+        static fft : Arc<dyn FFT<f32>> = fft_planner.plan_fft(FFT_SIZE);
+    }
+    //filter may have to have coeffcient as arg
+    fn filter(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+        //not sure how to use this right now but doesnt really matter anyways
+        //could use something in either AudioStream or sample or whatever
+        //self.thalweg.data_points;
+    }
+    fn inverse_transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+        //should relate to source type
+        static mut ifft_planner : FFTplanner<f32> = FFTplanner::new(true);
+        static ifft : Arc<dyn FFT<f32>> = ifft_planner.plan_fft(FFT_SIZE);
+    }
 }
 
 impl<'stream_life, DataStreamType> New for AudioStream<'stream_life, DataStreamType> {
-    fn new<MultiBuffer>(stream_buff : MultiBuffer)->Self {
+    fn new<StreamType>(stream_buff : StreamType)->Self {
             let init_data : [f32; FFT_SIZE];
 
             let use_analytic_filt = false;
@@ -25,7 +55,6 @@ impl<'stream_life, DataStreamType> New for AudioStream<'stream_life, DataStreamT
             //let mut analytic : Vec<Complex<f32>> = Vec::with_capacity(analytic_size);
             let mut analytic = Option::None;
                 //[Complex<f32>; FFT_SIZE];
-
 
             if use_analytic_filt {
                 let mut n = FFT_SIZE - BUFF_SIZE;

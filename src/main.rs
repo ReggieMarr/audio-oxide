@@ -22,13 +22,15 @@ use std::mem;
 extern crate serde_json;
 // use serde_json;
 mod signal_processing;
+use signal_processing::TransformOptionsTrait;
 mod pixel;
 mod audio_stream;
-//mod audio_stream::callbacks;
+use audio_stream::audio_source::startup_audio_stream;
+use audio_stream::default_implementer::*;
 
 #[macro_use]
 extern crate lazy_static;
-use audio_stream::init_audio_simple as other_init_audio_simple;
+
 //use audio_stream::Scalar;
 //use audio_stream::callbacks;
 
@@ -127,148 +129,6 @@ fn get_freq_chart(audio_buff : &Vec<Vec4>, vec_size : usize, use_polar : bool) -
     }
     Ok(freq_buff)
 }
-// fn make_random_led_vec(strip_size : usize) -> Vec<Vec<u8>> {
-//         let mut test_leds : Vec<Vec<u8>> = Vec::with_capacity(strip_size);
-//         let mut rng = rand::thread_rng();
-
-//         for _ in 0..strip_size {
-//             let led_idx: Vec<u8> = (0..3).map(|_| {
-//                 rng.gen_range(0,255)
-//                 }).collect();
-//             test_leds.push(led_idx);
-//         }
-//         test_leds
-// }
-
-// // #[derive(Deserialize, Serialize)]
-// struct Pixel {
-//     //Named with a U because 🇨🇦
-//     pub colour : [u8;3],
-//     //should later expand this to represent the pixel in optionally one, two, or 3 dimensions
-//     pub index : u8
-// }
-
-// impl Pixel {
-//     fn new(setup_colour : Option<[u8;3]>, setup_index : Option<u8>) -> Pixel {
-//         let mut prologue_colour = [0u8;3];
-//         if let Some(x) = setup_colour {
-//             prologue_colour = setup_colour.unwrap();
-//         }
-//         let mut prologue_index = 0u8;
-//         if let Some(x) = setup_index {
-//             prologue_index = setup_index.unwrap();
-//         }
-//         Pixel {
-//             colour : prologue_colour,
-//             index : prologue_index
-//         }
-//     }
-// }
-
-// impl serde::ser::Serialize for Pixel {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         // 3 is the number of fields in the struct.
-//         let mut state = serializer.serialize_struct("Pixel", 2)?;
-//         state.serialize_field("colour", &self.colour)?;
-//         state.serialize_field("index", &self.index)?;
-//         state.end()
-//     }
-// }
-
-// #[derive(Debug)]
-// struct FrequencyBuff {
-//     frequencies : Vec<f32>,
-//     amplitudes : Vec<f32>
-// }
-
-// fn get_freq_chart(audio_buff : &Vec<Vec4>, vec_size : usize, use_polar : bool) -> std::io::Result<(FrequencyBuff)> {
-//     let mut freq_buff = FrequencyBuff {
-//         frequencies : Vec::with_capacity(audio_buff.len()),
-//         amplitudes : Vec::with_capacity(audio_buff.len())
-//     };
-//     for audio_packet in audio_buff.iter() {
-//         let real_part = audio_packet.vec[0];
-//         let im_part = audio_packet.vec[1];
-//         //Unused for now
-//         let freq = audio_packet.vec[2];
-//         // let ang_velocity = audio_packet.vec[2];
-//         // let ang_noise = audio_packet.vec[3];
-//         freq_buff.frequencies.push(freq);
-//         if use_polar {
-//             let mag_polar = f32::sqrt(real_part.exp2() + im_part.exp2());
-//                 let mag_db_polar = 20.0f32*(2.0f32*mag_polar/vec_size as f32).abs().log10();
-//                 if mag_db_polar.is_infinite() {
-//                     freq_buff.amplitudes.push(0.0f32);
-//                 }
-//                 else {
-//                     freq_buff.amplitudes.push(mag_db_polar);
-//                 }
-//         } else {
-//                 let mag_db_rect = 20.0f32*(((2.0f32*im_part/vec_size as f32).abs()).log10());
-//                 if mag_db_rect.is_infinite() {
-//                     freq_buff.amplitudes.push(0.0f32);
-//                 }
-//                 else {
-//                     freq_buff.amplitudes.push(mag_db_rect);
-//                 }
-//         }
-//     }
-//     Ok(freq_buff)
-// }
-
-// use std::os::raw::c_char;
-// use std::slice;
-
-// #[repr(C)]
-// struct Buffer {
-//     data : *mut u8,
-//     len : usize
-// }
-
-// const DEFAULT_MESSAGE_SIZE : usize = 1024;
-// //each led colour is represented by the value of 3 bytes (r,g,b)
-// const COLOUR_SIZE : usize = 256*3;
-
-// // fn make_pixel_packet(data : &Vec<f32>, led_num : usize) -> std::io::Result<(Box<(Vec<u8>)>)> {
-// fn make_pixel_packet(data : &Vec<f32>, led_num : usize) -> std::io::Result<(Box<([u8;1024])>)> {
-
-//     let sample_packet = make_weighted_bar_msg(data, 0, led_num).unwrap();
-//     // assert(sample_packet.len(), led_num);
-//     //the message_size is determined by the number of leds multiplied by the memory required for the colour
-//     // let message_size : usize = led_num*COLOUR_SIZE;
-
-//     // let mut packet_byte_array = vec![0 as u8; message_size];
-//     let mut packet_byte_array = [0 as u8; 1024];
-//     // for (idx, pixel) in sample_packet.iter().enumerate() {
-//     let mut stdout = StandardStream::stdout(ColorChoice::Always);
-//     for pixel_idx in (0..DEFAULT_MESSAGE_SIZE).step_by(4) {
-//         //since we are always sending a message with an array of 256 pixels
-//         // packet_byte_array.push(pixel.index);
-//         // packet_byte_array.push(pixel_idx as u8);
-
-
-//         if pixel_idx < sample_packet.len() {
-//             packet_byte_array[pixel_idx] = sample_packet[pixel_idx].index;
-//             packet_byte_array[pixel_idx+1] = sample_packet[pixel_idx].colour[0];
-//             packet_byte_array[pixel_idx+2] = sample_packet[pixel_idx].colour[1];
-//             packet_byte_array[pixel_idx+3] = sample_packet[pixel_idx].colour[2];
-//             stdout.set_color(ColorSpec::new().set_fg(Some(Color::Rgb(
-//                 packet_byte_array[pixel_idx+0],
-//                 packet_byte_array[pixel_idx+1],
-//                 packet_byte_array[pixel_idx+2]))));
-//             println!("▀");
-//         }
-//         // else {
-//         //     let pixel_real_idx = pixel_idx as u8/4u8;
-//         //     packet_byte_array[pixel_idx] = pixel_real_idx;
-//         // }
-//     }
-//     Ok(Box::new(packet_byte_array))
-// }
-
 
 fn main() -> std::io::Result<()> {
     {
