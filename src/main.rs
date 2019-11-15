@@ -29,7 +29,7 @@ mod audio_stream;
 #[macro_use]
 extern crate lazy_static;
 use audio_stream::init_audio_simple as other_init_audio_simple;
-use audio_stream::Scalar;
+//use audio_stream::Scalar;
 //use audio_stream::callbacks;
 
 // mod plotting;

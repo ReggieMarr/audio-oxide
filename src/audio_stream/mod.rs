@@ -25,9 +25,24 @@ use glium::*;//{
 
 use crate::device_modules::config::*;
 use num::complex::Complex;
-pub mod callbacks;
+use arr_macro::arr;
+//pub mod callbacks;
 
-pub type MultiBuffer = Arc<Vec<Mutex<AudioBuffer>>>;
+pub const SAMPLE_RATE : f64   = 44_100.0;
+const CHANNELS        : usize   = 2;
+const INTERLEAVED     : bool  = true;
+//These should be stored in some sort of config file/object
+const ANGLE_CUTOFF    : f32   = 0.01;
+const ANGLE_Q         : f32   = 0.5;
+const NOISE_CUTOFF    : f32   = 0.01;
+const NOISE_Q         : f32   = 0.5;
+const FFT_SIZE        : usize = 1024;
+const NUM_BUFFERS     : usize = 256;
+const BUFF_SIZE       : usize = 256;
+const GAIN            : f32   = 1.0;
+
+//These could probably be combined and handled as their own struct
+pub type MultiBuffer = Arc<[[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS]>;
 pub type PortAudioStream = Stream<NonBlocking, Input<f32>>;
 // pub type ReceiveType = mpsc::Receiver<mpsc>;
 
@@ -45,8 +60,8 @@ struct AudioSample {
 }
 
 impl Default for AudioSample {
-    fn default() {
-        AudioStream {
+    fn default()->Self {
+        AudioSample {
             complex_point : Complex::new(0.0f32, 0.0f32),
             sample_freq : 0.0f32,
             angular_noise : 0.0f32,
@@ -62,54 +77,29 @@ pub struct AudioBuffer {
     pub analytic: Vec<AudioSample>,
 }
 
-pub const SAMPLE_RATE : f64   = 44_100.0;
-const CHANNELS        : i32   = 2;
-const INTERLEAVED     : bool  = true;
-//These should be stored in some sort of config file/object
-const ANGLE_CUTOFF    : f32   = 0.01;
-const ANGLE_Q         : f32   = 0.5;
-const NOISE_CUTOFF    : f32   = 0.01;
-const NOISE_Q         : f32   = 0.5;
-const FFT_SIZE        : f32   = 1024;
-const NUM_BUFFERS     : usize = 256;
-const BUFF_SIZE       : usize = 256;
-const GAIN            : f32   = 1.0;
 
-use crate::signal_processing::{Sample, Transform_Options};
+use crate::signal_processing::{Sample, TransformOptions};
 
-
-//Figure out how to do this
-//impl<DataStreamType> Coalece for AudioStream<DataStreamType> {
-//    fn coalece(&self, input_adc : &DataStreamType)->std::io::Result<bool> {
-//        self.clean_stream(input_adc);
-//        self.thalweg.update(input_adc);
-//        Ok(self.package())
-//    }
-//}
 
 //TODO consider creating a more generic samplestream that
 //we can make into an audiostream
-struct AudioStream<DataStreamType> {
+struct AudioStream<'stream_life, DataStreamType> {
     //buffer                  : Arc<Vec<AudioBuffer>>,
     buffer                  : Arc<[[AudioSample; BUFF_SIZE]; NUM_BUFFERS]>,
     //TODO possibly encapsulate this stuff as its own thing
-    thalweg                 : Sample<'static, DataStreamType, AudioSample>,
+    thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
 }
 
-impl<DataStreamType> AudioStream<DataStreamType> {
-    fn coalece(&self, input_adc : &DataStreamType)->std::io::Result<bool> {
-        self.clean_stream(input_adc);
-        self.thalweg.update(input_adc);
-        Ok(self.package())
-    }
-    //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
-    //We actually update the time index and the sample buffer
-    fn clean_stream(&self, sample_buffer : &Vec<Complex<f32>>, data : DataStreamType) {
-        static mut time_index : usize = 0;
+impl<'stream_life> AudioStream<'stream_life, Vec<f32>>
+{
+    fn normalize_sample(&self, data : Vec<f32>, time_index : usize)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
+        //should use const but for now we will hard code FFT_SIZE
+        static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
         //should assert that split point is indeed the middle of the buffer
         let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
         //This takes the buffer input to the stream and then begins describing the
-        //input using complex values on a unit circle.
+        //input using complex values on a unit circle.alloc
+        let data = data as Vec<f32>;
         for ((x, t0), t1) in data.chunks(CHANNELS)
             .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
             .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
@@ -118,14 +108,32 @@ impl<DataStreamType> AudioStream<DataStreamType> {
             *t0 = mono;
             *t1 = mono;
         }
-        //this updates the time index as we continue to sample the audio stream
-        time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
+        Ok(sample_buffer)
     }
+    //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
+    //We actually update the time index and the sample buffer
+    fn clean_stream(&self, data : Vec<f32>)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
+        //this updates the time index as we continue to sample the audio stream
+        static mut time_index : usize = 0;
+        let normalized_sample = self.normalize_sample(data, time_index)?;
+        time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
+        Ok(normalized_sample)
+    }
+    //fn coalece(&self, input_adc : DataStreamType)->std::io::Result<bool> {
+    fn coalece(&self, input_adc : Vec<f32>)->std::io::Result<(AudioSample)> {
+        self.clean_stream(input_adc);
+        self.thalweg.update(Some(input_adc), None)?;
+        Ok(self.thalweg.output_data.unwrap())
+    }
+}
 
+trait Package {
+    fn package<R>(&self)->std::io::Result<R>;
+}
 
+impl<'stream_life, DataStreamType> Package for AudioStream<'stream_life, DataStreamType> {
 
-    //This might actually make sense to be its own scope
-    fn package(&self) {
+    fn package<Bool>(&self, package_item : DataStreamType)->std::io::Result<Bool> {
         static mut analytic_buffer : Vec<AudioSample> = Vec::with_capacity(BUFF_SIZE + 3);//vec![AudioSample::default(); self.buffer_size + 3];
         //this should be stuck to the type used in self
         static mut prev_input : Complex<f32> = Complex::new(0.0, 0.0);
@@ -133,16 +141,18 @@ impl<DataStreamType> AudioStream<DataStreamType> {
         //These are both config values
         let angle_lp = get_lowpass(ANGLE_CUTOFF, ANGLE_Q);
         let noise_lp = get_lowpass(NOISE_CUTOFF, NOISE_Q);
-        if let Some(_) = self.filter {
+        //we need to understand this better, why should we only do this if the filter is applied?
+        //if let Some(_) = self.filter {
             analytic_buffer[0] = analytic_buffer[BUFF_SIZE];
             analytic_buffer[1] = analytic_buffer[BUFF_SIZE + 1];
             analytic_buffer[2] = analytic_buffer[BUFF_SIZE + 2];
-        }
-        let freq_res = SAMPLE_RATE as f32 / FFT_SIZE;
+        //}
+        //this is real bad to do
+        let freq_res = SAMPLE_RATE as f32 / FFT_SIZE as f32;
         // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
         //this takes 256 points from the complex_freq_buffer into the analytic_buffer
         // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
-        let freq_iter = self.complex_freq_buffer.iter().zip(analytic_buffer.iter_mut());
+        let freq_iter = package_item.iter().zip(analytic_buffer.iter_mut());
         for (freq_idx, (&x, y)) in freq_iter.enumerate() {
             let diff = x - prev_input; // vector
             prev_input = x;
@@ -172,14 +182,55 @@ impl<DataStreamType> AudioStream<DataStreamType> {
             !rendered
         };
         buffer_index = (buffer_index + 1) % NUM_BUFFERS;
-        dropped
+        Ok(dropped)
     }
 
 }
-const UNKNOWN: usize = 5;
+
+trait New {
+    fn new<CFGTYPE>(&self, cfg_data : CFGTYPE)->Self;
+}
+
+impl<'stream_life, DataStreamType> New for AudioStream<'stream_life, DataStreamType> {
+    fn new<MultiBuffer>(stream_buff : MultiBuffer)->Self {
+            let init_data : [f32; FFT_SIZE];
+
+            let use_analytic_filt = false;
+            //let mut analytic_size = FFT_SIZE;
+            //let mut analytic : Vec<Complex<f32>> = Vec::with_capacity(analytic_size);
+            let mut analytic = Option::None;
+                //[Complex<f32>; FFT_SIZE];
 
 
-pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
+            if use_analytic_filt {
+                let mut n = FFT_SIZE - BUFF_SIZE;
+                if n % 2 == 0 {
+                    n -= 1;
+                }
+                //analytic.clear();
+                analytic = Some(make_analytic(n));
+                //analytic_size = BUFF_SIZE + 3;
+            }
+            let mut fft_planner = FFTplanner::new(false);
+            let fft = fft_planner.plan_fft(FFT_SIZE);
+            //let mut ifft_planner = FFTplanner::new(true);
+            //let ifft = ifft_planner.plan_fft(FFT_SIZE);
+            let transform_opt = TransformOptions::<Complex<f32>> {
+                transform : Some(Box::new(fft.process)),
+                filter : analytic,
+                inverse_transform : None,
+            };
+            AudioStream::<'stream_life, DataStreamType> {
+                buffer : local_sar,
+                thalweg : Sample::new(&init_data, None, transform_opt),
+            };
+    }
+
+}
+
+
+//pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
+pub fn startup_audio_stream()->Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
     let pa = PortAudio::new().expect("Unable to init portaudio");
 
     let def_input = pa.default_input_device().expect("Unable to get default device");
@@ -191,7 +242,7 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     // We pass which mic should be used, how many channels are used,
     // whether all the values of all the channels should be passed in a
     // single audiobuffer and the latency that should be considered
-    let input_params = StreamParameters::<f32>::new(def_input, CHANNELS, INTERLEAVED, latency);
+    let input_params = StreamParameters::<f32>::new(def_input, CHANNELS as i32, INTERLEAVED, latency);
 
     pa.is_input_format_supported(input_params, SAMPLE_RATE)?;
     // Settings for an inputstream.
@@ -214,47 +265,13 @@ pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBu
     let (receiver, callback) = {
         let (sender, receiver) = mpsc::channel();
         let local_sar = sar_buff.clone();
-        let init_data : Vec<f32> = vec![0.0; FFT_SIZE];
-        let mut audio_sample : Sample::<'_,Complex<f32>,Complex<f32>>;
 
-        let use_analytic_filt = false;
-        let mut analytic_size = FFT_SIZE;
-        let mut analytic : Vec<Complex<f32>> = Vec::with_capacity(analytic_size);
+        let stream_handler = AudioStream::<'_,Vec<f32>>::new(local_sar);
 
-
-        if use_analytic_filt {
-            let mut n = FFT_SIZE - BUFF_SIZE;
-            if n % 2 == 0 {
-                n -= 1;
-            }
-            analytic.clear();
-            analytic = make_analytic(n, FFT_SIZE);
-            analytic_size = BUFF_SIZE + 3;
-        }
-        let mut fft_planner = FFTplanner::new(false);
-        let fft = fft_planner.plan_fft(FFT_SIZE);
-        let fft_closure = | input, output | {
-            fft.process(input, output);
-        };
-        let analytic_filt_closure = | coeffcient, input | {
-            for (x, y) in coeffcient.iter().zip(input.iter_mut()) {
-                *y = *x * *y;
-            }
-        };
-        //let mut ifft_planner = FFTplanner::new(true);
-        //let ifft = ifft_planner.plan_fft(FFT_SIZE);
-        let transform_opt = Transform_Options {
-            transform : Some(fft_closure),
-            filter : Some(analytic_filt_closure),
-            inverse_transform : None,
-        };
-
-        let stream_handler = AudioStream<Vec<f32>> {
-            buffer : sar_buff,
-            thalweg : Sample::new(init_data, scope, transform_opt),
-        };
+        //somehow this reads buffer as a module and data as some buffer value
         (receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
-            if stream_handler.coalece(data) {
+            let stream_output : AudioSample = stream_handler.coalece(data).unwrap();
+            if stream_handler.package().unwrap() {
                 sender.send(()).ok();
             }
             Continue
@@ -280,7 +297,7 @@ fn get_angle(v: Complex<f32>, u: Complex<f32>) -> f32 {
 }
 
 // returns biquad lowpass filter
-fn get_lowpass(n: f32, q: f32) -> Box<FnMut(f32) -> f32> {
+fn get_lowpass(n: f32, q: f32) -> Box<dyn FnMut(f32) -> f32> {
     let k = (0.5 * n * ::std::f32::consts::PI).tan();
     let norm = 1.0 / (1.0 + k / q + k * k);
     let a0 = k * k * norm;
@@ -306,16 +323,18 @@ fn get_lowpass(n: f32, q: f32) -> Box<FnMut(f32) -> f32> {
 // FIR analytical signal transform of length n with zero padding to be length m
 // real part removes DC and nyquist, imaginary part phase shifts by 90
 // should act as bandpass (remove all negative frequencies + DC & nyquist)
-fn make_analytic(n: usize, m: usize) -> Vec<Complex<f32>> {
+//fn make_analytic(n: usize, m: usize) -> Vec<Complex<f32>> {
+fn make_analytic(n: usize) -> [Complex<f32>; FFT_SIZE] {
     use ::std::f32::consts::PI;
     assert_eq!(n % 2, 1, "n should be odd");
-    assert!(n <= m, "n should be less than or equal to m");
+    assert!(n <= FFT_SIZE, "n should be less than or equal to FFT_SIZE");
     // let a = 2.0 / n as f32;
     let mut fft_planner = FFTplanner::new(false);
     //this probably doesn't need to be mut
-    let mut fft = fft_planner.plan_fft(m);
+    let mut fft = fft_planner.plan_fft(FFT_SIZE);
 
-    let mut impulse = vec![Complex::new(0.0, 0.0); m];
+    //let mut impulse = vec![Complex::new(0.0, 0.0); m];
+    let mut impulse = [Complex::new(0.0, 0.0); FFT_SIZE];
     let mut freqs = impulse.clone();
 
     let mid = (n - 1) / 2;
