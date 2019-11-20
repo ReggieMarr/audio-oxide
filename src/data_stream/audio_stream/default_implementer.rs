@@ -2,10 +2,11 @@
 use rustfft::{FFTplanner, FFT};
 use std::sync::{Arc, Mutex};
 use arr_macro::arr;
+use crate::data_stream::audio_stream as local_mod;
 
 use num::complex::Complex;
 //defines (should get moved somewhere else)
-use crate::audio_stream::common::{
+use local_mod::common::{
     FFT_SIZE,
     GAIN,
     BUFF_SIZE,
@@ -18,31 +19,38 @@ use crate::audio_stream::common::{
     SAMPLE_RATE,
 };
 
-use crate::audio_stream::common::{
+use local_mod::common::{
     AudioSample,
     AudioStream,
     New,
     Package,
 };
+
 use crate::signal_processing::{Sample, TransformOptionsTrait};
 
 impl<SourceType> TransformOptionsTrait<SourceType> for AudioStream<'_, SourceType> {
     type TransformBaseType = f32;
     //Should use this in planner and FFT but cant form some reason right now
-    fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-        static mut fft_planner : FFTplanner<f32> = FFTplanner::new(true);
-        static fft : Arc<dyn FFT<f32>> = fft_planner.plan_fft(FFT_SIZE);
-    }
-    //filter may have to have coeffcient as arg
-    fn filter(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-        //not sure how to use this right now but doesnt really matter anyways
-        //could use something in either AudioStream or sample or whatever
-        //self.thalweg.data_points;
-    }
-    fn inverse_transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-        //should relate to source type
-        static mut ifft_planner : FFTplanner<f32> = FFTplanner::new(true);
-        static ifft : Arc<dyn FFT<f32>> = ifft_planner.plan_fft(FFT_SIZE);
+    //fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+    //    static mut fft_planner : FFTplanner<f32> = FFTplanner::new(true);
+    //    static fft : Arc<dyn FFT<f32>> = fft_planner.plan_fft(FFT_SIZE);
+    //}
+    ////filter may have to have coeffcient as arg
+    //fn filter(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+    //    //not sure how to use this right now but doesnt really matter anyways
+    //    //could use something in either AudioStream or sample or whatever
+    //    //self.thalweg.data_points;
+    //}
+    //fn inverse_transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+    //    //should relate to source type
+    //    static mut ifft_planner : FFTplanner<f30> = FFTplanner::new(true);
+    //    static ifft : Arc<dyn FFT<f32>> = ifft_planner.plan_fft(FFT_SIZE);
+    //}
+    fn cycle_transforms(&self, function_vec : Vec<Box<dyn Fn(&mut [SourceType; FFT_SIZE])>>) {
+        for func in function_vec {
+            //func(self.thalweg)
+        }
+
     }
 }
 
@@ -141,6 +149,7 @@ impl<'stream_life, DataStreamType> Package for AudioStream<'stream_life, DataStr
 
 impl<'stream_life> AudioStream<'stream_life, Vec<f32>>
 {
+    //this could be a trait for audio stuff like make_mono
     fn normalize_sample(&self, data : Vec<f32>, time_index : usize)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
         //should use const but for now we will hard code FFT_SIZE
         static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
@@ -161,6 +170,8 @@ impl<'stream_life> AudioStream<'stream_life, Vec<f32>>
     }
     //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
     //We actually update the time index and the sample buffer
+    //this stuff may actually make more sense to be implemented on the audio side
+    //maybe even as a trait like cast_sample
     fn clean_stream(&self, data : Vec<f32>)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
         //this updates the time index as we continue to sample the audio stream
         static mut time_index : usize = 0;

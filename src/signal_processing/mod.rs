@@ -7,6 +7,7 @@ It also republishes the module audiovisual. Used to project audio data, visually
 */
 pub mod audiovisual;
 
+use std::error::Error;
 const FFT_SIZE              : usize = 1024;
 const NUM_TRANSFORM_OPTIONS : usize = 3;
 
@@ -15,18 +16,23 @@ const NUM_TRANSFORM_OPTIONS : usize = 3;
 //we execute them and handle their output accordingly
 pub trait TransformOptionsTrait<SourceType> {
     type TransformBaseType;
-    fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-        // default implementation does nothing
-    }
-    //filter may have to have coeffcient as arg
-    fn filter(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-        // default implementation does nothing
-    }
-    fn inverse_transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-        // default implementation does nothing
-    }
+    //fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+    //    // default implementation does nothing
+    //}
+    ////filter may have to have coeffcient as arg
+    //fn filter(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+    //    // default implementation does nothing
+    //}
+    //fn inverse_transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
+    //    // default implementation does nothing
+    //}
     //utimately we need some way to check if any of these have been implemented in
     //something like the cycle_through function
+    //rather than options maybe have identifiers?
+    fn cycle_transforms(&self, function_vec : Vec<Box
+        <dyn Fn(&mut [SourceType; FFT_SIZE])>>) { //->Result<(bool,Box<Error>> {
+           //default do nothing, maybe change this?
+    }
 }
 
 pub struct TransformOptions<SourceType>

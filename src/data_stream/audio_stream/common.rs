@@ -16,11 +16,10 @@ pub const GAIN            : f32   = 1.0;
 
 //These could probably be combined and handled as their own struct
 pub type MultiBuffer = Arc<[[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS]>;
-pub type PortAudioStream = Stream<NonBlocking, Input<f32>>;
 // pub type ReceiveType = mpsc::Receiver<mpsc>;
 
+use arr_macro::arr;
 use crate::signal_processing::{Sample, TransformOptions};
-
 
 pub struct AudioSample {
     //a single point on a complex unit circle
@@ -65,9 +64,31 @@ pub trait Package {
     fn package<R>(&self)->std::io::Result<R>;
 }
 
+pub trait MakeMono {
+    //this will be normalize
+    //it might make more sense to set this in the def of the trait
+    fn make_mono<DataType,ResultType>(&self,& mut data : DataType, time_index : usize)->std::io::Result<ResultType> {
+    }
+}
+
+pub trait InputHandler {
+    //it might make more sense to set this in the def of the trait
+    fn handle_input<DataType,ResultType>(&self,&mut data : DataType)->std::io::Result<ResultType> {
+
+    }
+}
+
+impl<StructType> InputHandler for StructType
+    where StructType : MakeMono {
+    fn handle_input<DataType, ResultType>(&self,&mut data : DataType)->std::io::Result<ResultType> {
+        //this updates the time index as we continue to sample the audio stream
+        static mut time_index : usize = 0;
+        self.make_mono(data, time_index)?;
+        time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
+        Ok(time_index)
+    }
+}
 
 pub trait New {
     fn new<CFGTYPE>(&self, cfg_data : CFGTYPE)->Self;
 }
-
-
