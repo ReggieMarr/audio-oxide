@@ -18,7 +18,6 @@ pub const GAIN            : f32   = 1.0;
 pub type MultiBuffer = Arc<[[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS]>;
 // pub type ReceiveType = mpsc::Receiver<mpsc>;
 
-use arr_macro::arr;
 use crate::signal_processing::{Sample, TransformOptions};
 
 pub struct AudioSample {
@@ -43,21 +42,16 @@ impl Default for AudioSample {
     }
 }
 
-//The only reason we really need this is the rendered
-//attribute. Dropping for now
-//struct AudioBuffer {
-//    pub rendered: bool,
-//    pub analytic: Vec<AudioSample>,
-//}
-
 
 //TODO consider creating a more generic samplestream that
 //we can make into an audiostream
-pub struct AudioStream<'stream_life, DataStreamType> {
-    //buffer                  : Arc<Vec<AudioBuffer>>,
-    buffer                  : Arc<[[AudioSample; BUFF_SIZE]; NUM_BUFFERS]>,
-    //TODO possibly encapsulate this stuff as its own thing
-    thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
+pub struct AudioStream<'stream_life, ADC, BufferT> {
+    //Using sample probably adds more overhead than needed but lets just try
+    pub buffer     : Arc<[[Mutex<Sample<'stream_life, ADC, BufferT>>; BUFF_SIZE]; NUM_BUFFERS]>,
+    //these should be private and immutable
+    pub current_buff   : usize,
+    pub current_sample : usize,
+    //pub thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
 }
 
 pub trait Package {

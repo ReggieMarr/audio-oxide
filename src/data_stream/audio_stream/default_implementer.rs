@@ -26,73 +26,22 @@ use local_mod::common::{
     Package,
 };
 
-use crate::signal_processing::{Sample, TransformOptionsTrait};
+use crate::signal_processing::{Sample, TransformOptions};
 
-impl<SourceType> TransformOptionsTrait<SourceType> for AudioStream<'_, SourceType> {
-    type TransformBaseType = f32;
-    //Should use this in planner and FFT but cant form some reason right now
-    //fn transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-    //    static mut fft_planner : FFTplanner<f32> = FFTplanner::new(true);
-    //    static fft : Arc<dyn FFT<f32>> = fft_planner.plan_fft(FFT_SIZE);
-    //}
-    ////filter may have to have coeffcient as arg
-    //fn filter(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-    //    //not sure how to use this right now but doesnt really matter anyways
-    //    //could use something in either AudioStream or sample or whatever
-    //    //self.thalweg.data_points;
-    //}
-    //fn inverse_transform(&self, &mut input : [SourceType; FFT_SIZE])->[SourceType; FFT_SIZE] {
-    //    //should relate to source type
-    //    static mut ifft_planner : FFTplanner<f30> = FFTplanner::new(true);
-    //    static ifft : Arc<dyn FFT<f32>> = ifft_planner.plan_fft(FFT_SIZE);
-    //}
-    fn cycle_transforms(&self, function_vec : Vec<Box<dyn Fn(&mut [SourceType; FFT_SIZE])>>) {
-        for func in function_vec {
-            //func(self.thalweg)
-        }
-
+//impl<'stream_life, DataStreamType> New for AudioStream<'stream_life, DataStreamType> {
+//
+//}
+impl<'stream_life, ADC, BufferT> AudioStream<'stream_life, ADC, BufferT> {
+    pub fn peak_current_sample(&self)->Mutex<Sample<'stream_life, ADC, BufferT>> {
+        self.buffer[self.current_buff][self.current_sample]
     }
 }
 
-impl<'stream_life, DataStreamType> New for AudioStream<'stream_life, DataStreamType> {
-    fn new<StreamType>(stream_buff : StreamType)->Self {
-            let init_data : [f32; FFT_SIZE];
+impl<'stream_life, ADC, BufferT> Package for AudioStream<'stream_life, ADC, BufferT>
+    where ADC : IntoIterator,
+{
 
-            let use_analytic_filt = false;
-            //let mut analytic_size = FFT_SIZE;
-            //let mut analytic : Vec<Complex<f32>> = Vec::with_capacity(analytic_size);
-            let mut analytic = Option::None;
-                //[Complex<f32>; FFT_SIZE];
-
-            if use_analytic_filt {
-                let mut n = FFT_SIZE - BUFF_SIZE;
-                if n % 2 == 0 {
-                    n -= 1;
-                }
-                //analytic.clear();
-                analytic = Some(make_analytic(n));
-                //analytic_size = BUFF_SIZE + 3;
-            }
-            let mut fft_planner = FFTplanner::new(false);
-            let fft = fft_planner.plan_fft(FFT_SIZE);
-            //let mut ifft_planner = FFTplanner::new(true);
-            //let ifft = ifft_planner.plan_fft(FFT_SIZE);
-            let transform_opt = TransformOptions::<Complex<f32>> {
-                transform : Some(Box::new(fft.process)),
-                filter : analytic,
-                inverse_transform : None,
-            };
-            AudioStream::<'stream_life, DataStreamType> {
-                buffer : local_sar,
-                thalweg : Sample::new(&init_data, None, transform_opt),
-            };
-    }
-
-}
-
-impl<'stream_life, DataStreamType> Package for AudioStream<'stream_life, DataStreamType> {
-
-    fn package<Bool>(&self, package_item : DataStreamType)->std::io::Result<Bool> {
+    fn package<Bool>(&self, package_item : ADC)->std::io::Result<Bool> {
         static mut analytic_buffer : Vec<AudioSample> = Vec::with_capacity(BUFF_SIZE + 3);//vec![AudioSample::default(); self.buffer_size + 3];
         //this should be stuck to the type used in self
         static mut prev_input : Complex<f32> = Complex::new(0.0, 0.0);
@@ -147,45 +96,45 @@ impl<'stream_life, DataStreamType> Package for AudioStream<'stream_life, DataStr
 }
 
 
-impl<'stream_life> AudioStream<'stream_life, Vec<f32>>
-{
-    //this could be a trait for audio stuff like make_mono
-    fn normalize_sample(&self, data : Vec<f32>, time_index : usize)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
-        //should use const but for now we will hard code FFT_SIZE
-        static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
-        //should assert that split point is indeed the middle of the buffer
-        let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
-        //This takes the buffer input to the stream and then begins describing the
-        //input using complex values on a unit circle.alloc
-        let data = data as Vec<f32>;
-        for ((x, t0), t1) in data.chunks(CHANNELS)
-            .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
-            .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
-        {
-            let mono = Complex::new(GAIN * (x[0] + x[1]) / 2.0, 0.0);
-            *t0 = mono;
-            *t1 = mono;
-        }
-        Ok(sample_buffer)
-    }
-    //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
-    //We actually update the time index and the sample buffer
-    //this stuff may actually make more sense to be implemented on the audio side
-    //maybe even as a trait like cast_sample
-    fn clean_stream(&self, data : Vec<f32>)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
-        //this updates the time index as we continue to sample the audio stream
-        static mut time_index : usize = 0;
-        let normalized_sample = self.normalize_sample(data, time_index)?;
-        time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
-        Ok(normalized_sample)
-    }
-    //fn coalece(&self, input_adc : DataStreamType)->std::io::Result<bool> {
-    fn coalece(&self, input_adc : Vec<f32>)->std::io::Result<(AudioSample)> {
-        self.clean_stream(input_adc);
-        self.thalweg.update(Some(input_adc), None)?;
-        Ok(self.thalweg.output_data.unwrap())
-    }
-}
+//impl<'stream_life> AudioStream<'stream_life, Vec<f32>>
+//{
+//    //this could be a trait for audio stuff like make_mono
+//    fn normalize_sample(&self, data : Vec<f32>, time_index : usize)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
+//        //should use const but for now we will hard code FFT_SIZE
+//        static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
+//        //should assert that split point is indeed the middle of the buffer
+//        let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
+//        //This takes the buffer input to the stream and then begins describing the
+//        //input using complex values on a unit circle.alloc
+//        let data = data as Vec<f32>;
+//        for ((x, t0), t1) in data.chunks(CHANNELS)
+//            .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
+//            .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
+//        {
+//            let mono = Complex::new(GAIN * (x[0] + x[1]) / 2.0, 0.0);
+//            *t0 = mono;
+//            *t1 = mono;
+//        }
+//        Ok(sample_buffer)
+//    }
+//    //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
+//    //We actually update the time index and the sample buffer
+//    //this stuff may actually make more sense to be implemented on the audio side
+//    //maybe even as a trait like cast_sample
+//    fn clean_stream(&self, data : Vec<f32>)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
+//        //this updates the time index as we continue to sample the audio stream
+//        static mut time_index : usize = 0;
+//        let normalized_sample = self.normalize_sample(data, time_index)?;
+//        time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
+//        Ok(normalized_sample)
+//    }
+//    //fn coalece(&self, input_adc : DataStreamType)->std::io::Result<bool> {
+//    fn coalece(&self, input_adc : Vec<f32>)->std::io::Result<(AudioSample)> {
+//        self.clean_stream(input_adc);
+//        self.thalweg.update(Some(input_adc), None)?;
+//        Ok(self.thalweg.output_data.unwrap())
+//    }
+//}
 
 
 // angle between two complex numbers

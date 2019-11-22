@@ -47,7 +47,7 @@ use local_mod::common::{
 use local_mod::common::Package;
 use local_mod::common::MakeMono;
 use local_mod::common::InputHandler;
-impl MakeMono for AudioStream<'static, Vec<f32>> {
+impl MakeMono for AudioStream<'_, Complex<f32>, AudioSample> {
     fn make_mono<DataType,ResultType>(&self,& mut data : DataType, time_index : usize)->std::io::Result<ResultType> {
         //should use const but for now we will hard code FFT_SIZE
         static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
@@ -78,14 +78,12 @@ pub trait SetupStream {
 //And we want to pass the address/item which will be mutated here. We wont
 //we will only take the return for portaudio errors. Runtime errors can be checked
 //panicing here and on our implementation side checking if the mutex has been poisened
-impl SetupStream for AudioStream<'static, Vec<f32>> {
+impl SetupStream for AudioStream<'_, Complex<f32>, AudioSample> {
     fn setup(&self)->Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
         let pa = PortAudio::new().expect("Unable to init portaudio");
 
         let def_input = pa.default_input_device().expect("Unable to get default device");
         let input_info = pa.device_info(def_input).expect("Unable to get device info");
-        // println!("Default input device name: {}", input_info.name);
-
         let latency = input_info.default_low_input_latency;
         // Set parameters for the stream settings.
         // We pass which mic should be used, how many channels are used,
@@ -99,7 +97,8 @@ impl SetupStream for AudioStream<'static, Vec<f32>> {
         // the sample rate of the mic and the amount values we want
         let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, BUFF_SIZE as u32);
 
-        let mut audio_buffer : [[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS];
+        //let mut audio_buffer : [[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS];
+        let mut audio_buffer : [[AudioSample; BUFF_SIZE]; NUM_BUFFERS];
 
         //may want to replace this with a map call
         for buff_idx in 0..NUM_BUFFERS {
@@ -113,17 +112,16 @@ impl SetupStream for AudioStream<'static, Vec<f32>> {
         // This is a lambda which I want called with the samples
         let (receiver, callback) = {
             let (sender, receiver) = mpsc::channel();
-            let local_sar = sar_buff.clone();
-
-            let stream_handler = AudioStream::<'_,Vec<f32>>::new(local_sar);
+            //let local_sar = sar_buff.clone();
+            //let stream_handler = AudioStream::<'_,Vec<f32>>::new(local_sar);
 
             //somehow this reads buffer as a module and data as some buffer value
             (receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
                 //it might actually make more sense to just get the data, make it into a mono
                 //sample, and then return that as as the buffer
-                self.prepare_input(data);
-                let stream_output : AudioSample = stream_handler.coalece(data).unwrap();
-                if stream_handler.package().unwrap() {
+                self.handle_input(data);
+                let current_sample = self.peak_current_sample().lock().unwrap();
+                if self.package().unwrap() {
                     sender.send(()).ok();
                 }
                 Continue

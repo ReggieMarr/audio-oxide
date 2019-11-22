@@ -8,4 +8,3 @@ use num::complex::Complex;
 pub mod common;
 pub mod audio_source;
 pub mod default_implementer;
-
