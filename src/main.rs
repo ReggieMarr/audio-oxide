@@ -35,7 +35,7 @@ impl<SourceType> TransformOptions<SourceType> for Sample<'_, SourceType, SourceT
         type TransformBaseType = f32;
         static mut fft_planner : FFTplanner<TransformBaseType> = FFTplanner::new(false);
         static fft : Arc<dyn FFT<TransformBaseType>> = fft_planner.plan_fft(FFT_SIZE);
-        fft.process(self.data_points,self.data_points);
+        fft.process(& mut self.data_points, & mut self.data_points);
     }
 
 }
@@ -92,36 +92,29 @@ fn main() -> std::io::Result<()> {
     //it will stay alive even if we say, end a stream
     let tune_stream : AudioStream<'_, Complex<f32>, AudioSample> = AudioStream::default();
     let mut stream : PortAudioStream = tune_stream.setup().unwrap();
-    //let (mut stream, buffers) = init_audio_simple(&esp_if).unwrap();
-    // let (mut stream, buffers) = init_audio(&esp_if).unwrap();
 
     stream.start().expect("Unable the open stream");
     thread::sleep(time::Duration::from_secs(10));
     let handle = thread::spawn(move || {
-        let mut index = 0;
-        // for _ in (0..1024-259) {
-            while !buffers[index].lock().unwrap().rendered {
-                let mut buffer = buffers[index].lock().unwrap();
-                //This is 258 since it needs to store the full range + 3 values to maintain
-                //Continuity
-                // ys_data.copy_from_slice(&buffer.analytic);
-                buffer.rendered = true;
-                index = (index + 1) % buffers.len();
-                //here we borrow a reference to buffer.analytic
-                //this allows get_freq_chart to use the data but ensure nothing else
-                //can manipulate it
-                // println!("size is {:?}",buffer.analytic.len());
-                //make sure to unwrap Results to properly iterate
-                let freq_mag = get_freq_chart(&buffer.analytic, fft_size, false).unwrap();
-                // let pixel_box = make_pixel_packet(&freq_mag.amplitudes, 125).unwrap();
-                // let pixel_packet = *pixel_box;
-                // send_udp_packet(local_socket, &pixel_packet).unwrap();
-            }
-        // }
+        let mut buff_idx = 0;
+        let mut sample_idx = 0;
+        let mut first = false;
+        while !tune_stream.buffer[buff_idx][sample_idx].lock().unwrap() {
+            let mut buffer = buffers[indx].lock().unwrap();
+            //This is 258 since it needs to store the full range + 3 values to maintain
+            //Continuity
+            //do something like this
+            //buff_idx = (buff_idx + 1) % buffers.len();
+            //here we borrow a reference to buffer.analytic
+            //this allows get_freq_chart to use the data but ensure nothing else
+            //can manipulate it
+            // println!("size is {:?}",buffer.analytic.len());
+            //make sure to unwrap Results to properly iterate
+            //let freq_mag = get_freq_chart(&buffer.analytic, fft_size, false).unwrap();
+        }
     });
-    // display(buffers);
     handle.join().unwrap();
-    // stream.stop();
+    stream.stop();
 
     Ok(())
 }

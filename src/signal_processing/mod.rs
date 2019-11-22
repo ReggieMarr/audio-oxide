@@ -61,7 +61,7 @@ If some transform function is provided then the
 */
 pub struct Sample<'a, SampleType, ReturnType> {
     //pub data_points : &'a [SampleType; FFT_SIZE],
-    pub data_points : &'a SampleType,
+    pub data_points : &'a mut SampleType,
     pub scope : Scope,
     pub output_data : Option<ReturnType>,
     /*
