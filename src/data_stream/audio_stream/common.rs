@@ -1,6 +1,5 @@
 use num::complex::Complex;
 use std::sync::{Arc, Mutex};
-
 pub const SAMPLE_RATE : f64   = 44_100.0;
 pub const CHANNELS        : usize   = 2;
 pub const INTERLEAVED     : bool  = true;
@@ -42,18 +41,6 @@ impl Default for AudioSample {
     }
 }
 
-
-//TODO consider creating a more generic samplestream that
-//we can make into an audiostream
-pub struct AudioStream<'stream_life, ADC, BufferT> {
-    //Using sample probably adds more overhead than needed but lets just try
-    pub buffer     : Arc<[[Mutex<Sample<'stream_life, ADC, BufferT>>; BUFF_SIZE]; NUM_BUFFERS]>,
-    //these should be private and immutable
-    pub current_buff   : usize,
-    pub current_sample : usize,
-    //pub thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
-}
-
 pub trait Package {
     fn package<R>(&self)->std::io::Result<R>;
 }
@@ -61,20 +48,19 @@ pub trait Package {
 pub trait MakeMono {
     //this will be normalize
     //it might make more sense to set this in the def of the trait
-    fn make_mono<DataType,ResultType>(&self,& mut data : DataType, time_index : usize)->std::io::Result<ResultType> {
-    }
+    fn make_mono<'a, DataSet, DataMember>(&self, data : &'a [DataSet], time_index : usize)->std::io::Result<DataSet>;
+    //fn make_mono<'a, DataSet, DataMember>(&self, data : [Complex<f32>; FFT_SIZE], time_index: usize)->std::io::Result<DataSet>;
 }
 
 pub trait InputHandler {
     //it might make more sense to set this in the def of the trait
-    fn handle_input<DataType,ResultType>(&self,&mut data : DataType)->std::io::Result<ResultType> {
-
-    }
+    type DataSet;
+    fn handle_input<DataType>(&self,data : DataType)->std::io::Result<usize>;
 }
 
 impl<StructType> InputHandler for StructType
     where StructType : MakeMono {
-    fn handle_input<DataType, ResultType>(&self,&mut data : DataType)->std::io::Result<ResultType> {
+    fn handle_input<DataType>(&self,data : DataType)->std::io::Result<usize> {
         //this updates the time index as we continue to sample the audio stream
         static mut time_index : usize = 0;
         self.make_mono(data, time_index)?;
@@ -85,4 +71,15 @@ impl<StructType> InputHandler for StructType
 
 pub trait New {
     fn new<CFGTYPE>(&self, cfg_data : CFGTYPE)->Self;
+}
+//TODO consider creating a more generic samplestream that
+//we can make into an audiostream
+//#[derive(InputHandler)]
+pub struct AudioStream<'stream_life, ADC, BufferT> {
+    //Using sample probably adds more overhead than needed but lets just try
+    pub buffer     : Arc<[[Mutex<Sample<'stream_life, ADC, BufferT>>; BUFF_SIZE]; NUM_BUFFERS]>,
+    //these should be private and immutable
+    pub current_buff   : usize,
+    pub current_sample : usize,
+    //pub thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
 }

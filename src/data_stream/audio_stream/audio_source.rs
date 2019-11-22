@@ -47,8 +47,15 @@ use local_mod::common::{
 use local_mod::common::Package;
 use local_mod::common::MakeMono;
 use local_mod::common::InputHandler;
+use std::marker::PhantomData;
+
 impl MakeMono for AudioStream<'_, Complex<f32>, AudioSample> {
-    fn make_mono<DataType,ResultType>(&self,& mut data : DataType, time_index : usize)->std::io::Result<ResultType> {
+    fn make_mono<'a, DataSet, DataMember>(&self, data : &'a [DataSet], time_index :usize)
+    //fn make_mono<'a, DataSet, DataMember>(&self, data : [Complex<f32>; FFT_SIZE], time_index :usize)
+        ->std::io::Result<DataSet>
+        where DataSet : std::ops::Add,
+              DataSet : std::ops::Mul
+    {
         //should use const but for now we will hard code FFT_SIZE
         static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
         //should assert that split point is indeed the middle of the buffer
@@ -70,6 +77,7 @@ impl MakeMono for AudioStream<'_, Complex<f32>, AudioSample> {
 //impl InputHandler for AudioStream<'static, Vec<f32>>{};
 
 pub trait SetupStream {
+    //fn setup<OutputType, ErrorType>(&self)->Result<OutputType, ErrorType> {
     fn setup<OutputType, ErrorType>(&self)->Result<OutputType, ErrorType> {
     }
 }
@@ -79,7 +87,7 @@ pub trait SetupStream {
 //we will only take the return for portaudio errors. Runtime errors can be checked
 //panicing here and on our implementation side checking if the mutex has been poisened
 impl SetupStream for AudioStream<'_, Complex<f32>, AudioSample> {
-    fn setup(&self)->Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
+    fn setup(&self)->Result<PortAudioStream, portaudio::Error> {
         let pa = PortAudio::new().expect("Unable to init portaudio");
 
         let def_input = pa.default_input_device().expect("Unable to get default device");
@@ -98,17 +106,9 @@ impl SetupStream for AudioStream<'_, Complex<f32>, AudioSample> {
         let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, BUFF_SIZE as u32);
 
         //let mut audio_buffer : [[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS];
-        let mut audio_buffer : [[AudioSample; BUFF_SIZE]; NUM_BUFFERS];
-
-        //may want to replace this with a map call
-        for buff_idx in 0..NUM_BUFFERS {
-            for sample_idx in 0..BUFF_SIZE {
-                audio_buffer[buff_idx][sample_idx] = Mutex::new(AudioSample::default());
-            }
-        }
         //This creates a thread safe reference counting pointer to buffers
         //Safe Audio Reference (SAR)
-        let sar_buff = Arc::new(audio_buffer);
+        //let sar_buff = Arc::new(audio_buffer);
         // This is a lambda which I want called with the samples
         let (receiver, callback) = {
             let (sender, receiver) = mpsc::channel();
@@ -129,8 +129,6 @@ impl SetupStream for AudioStream<'_, Complex<f32>, AudioSample> {
         };
         // Registers the callback with PortAudio
         let mut stream = pa.open_non_blocking_stream(settings, callback)?;
-
-        Ok((stream, sar_buff))
+        Ok(stream)
     }
 }
-

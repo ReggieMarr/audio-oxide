@@ -53,11 +53,12 @@ use audio_stream::{
 };
 use audio_stream::{
     audio_source::SetupStream,
+    audio_source::PortAudioStream,
 };
 
 impl<'a, ADC, BufferT> Default for AudioStream<'a, ADC, BufferT> {
 
-    fn default(&self)->Self {
+    fn default()->Self {
     //fn make_audio_stream<'a, ADC, BufferT>()->AudioStream<'a, ADC, BufferT> {
     //fn make_audio_stream<'a, ADC>()->AudioStream<'a, ADC, AudioSample> {
         /*
@@ -87,8 +88,10 @@ impl<'a, ADC, BufferT> Default for AudioStream<'a, ADC, BufferT> {
 fn main() -> std::io::Result<()> {
 
     //Start the audio stream
+    //we pass the lifetime of the current scope into audiostream so that
+    //it will stay alive even if we say, end a stream
     let tune_stream : AudioStream<'_, Complex<f32>, AudioSample> = AudioStream::default();
-    let (mut stream, buffers) = tune_stream.setup().unwrap();
+    let mut stream : PortAudioStream = tune_stream.setup().unwrap();
     //let (mut stream, buffers) = init_audio_simple(&esp_if).unwrap();
     // let (mut stream, buffers) = init_audio(&esp_if).unwrap();
 
