@@ -41,8 +41,8 @@ impl Default for AudioSample {
     }
 }
 
-pub trait Package {
-    fn package<R>(&self)->std::io::Result<R>;
+pub trait Package<'stream_life, ADC, BufferT> {
+    fn package<R>(&self, package_item : AudioStream<'stream_life, ADC, BufferT>)->std::io::Result<R>;
 }
 
 pub trait MakeMono {
@@ -82,4 +82,33 @@ pub struct AudioStream<'stream_life, ADC, BufferT> {
     pub current_buff   : usize,
     pub current_sample : usize,
     //pub thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
+}
+
+impl<'a, ADC, BufferT> Default for AudioStream<'a, ADC, BufferT> {
+
+    fn default()->Self {
+    //fn make_audio_stream<'a, ADC, BufferT>()->AudioStream<'a, ADC, BufferT> {
+    //fn make_audio_stream<'a, ADC>()->AudioStream<'a, ADC, AudioSample> {
+        /*
+           we create a sample which takes in the type which is the output of the InputHandler
+           (this will be [Complex<f32>;FFT_SIZE], but also requires type [Complex<f32>; FFT_SIZE*2])
+           The sample then calls its process method and then after this is called the package method
+           is called which gives us our output which is [AudioSample; BUFF_SIZE + 3]
+           this gives us one audio buffer of which we will make 3 of before sending the RollingSample
+           buffer sample
+        */
+        //type AudioSample = Sample<'a, ADC, BufferT>;
+        let mut buffer : [[ Mutex<Sample<'a, ADC, BufferT>>; BUFF_SIZE]; NUM_BUFFERS];
+        for outer in 0..NUM_BUFFERS {
+            for inner in 0..BUFF_SIZE {
+                buffer[outer][inner] = Mutex::new(Sample::default());
+            }
+        }
+        let safe_buffer = Arc::new(buffer);
+        AudioStream{
+            buffer : safe_buffer,
+            current_buff : 0,
+            current_sample : 0,
+        }
+    }
 }

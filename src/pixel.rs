@@ -1,7 +1,7 @@
 extern crate bincode;
 use serde::ser::{Serialize, SerializeStruct, Serializer};//, Deserialize, Deserializer};
-use std::os::raw::c_char;
-use std::slice;
+//use std::os::raw::c_char;
+//use std::slice;
 ///Note that when importing sibling modules in an application
 ///We need to declare the module in main.rs
 use crate::signal_processing::Scope;
@@ -26,7 +26,7 @@ struct Pixel {
     //Named with a U because 🇨🇦
     pub colour : PixelColour,
     pub on_status : bool,
-    /* 
+    /*
     We could transition to this, using only the dimensions which are relevant
     pub coordinate : Coordinate
     */
@@ -43,7 +43,7 @@ impl Pixel {
         if let Some(_) = setup_index {
             prologue_index = setup_index.unwrap();
         }
-        Pixel { 
+        Pixel {
             colour : prologue_colour,
             on_status : true,
             index : prologue_index
@@ -79,7 +79,7 @@ impl PixelStrip {
     //need an update here that does essentially the same thing except doesnt create a new instance
     //this error probably has something to do with PixelUsing generic types
 #[allow(dead_code)]
-    fn new(scope : Scope, colours : Vec<PixelColour>)->std::io::Result<(PixelStrip)> {
+    fn new(scope : Scope, colours : Vec<PixelColour>)->std::io::Result<PixelStrip> {
         //suboptimal but the best we can do for now
         assert!(scope.size >= colours.len());
         let mut pixel_strip : Vec<Pixel> = Vec::with_capacity(scope.end - scope.start);
@@ -93,18 +93,18 @@ impl PixelStrip {
 }
 
 trait PixelStripSerialize {
-    fn get_packet(&self) -> std::io::Result<(Box<([u8;1024])>)>;
+    fn get_packet(&self) -> std::io::Result<Box<[u8;1024]>>;
 }
 
 impl PixelStripSerialize for PixelStrip {
 
-    fn get_packet(&self) -> std::io::Result<(Box<([u8;1024])>)> {
-        
+    fn get_packet(&self) -> std::io::Result<Box<[u8;1024]>> {
+
         let pixel_strip = &self.strip;
         // assert(pixel_strip.len(), led_num);
         //the message_size is determined by the number of leds multiplied by the memory required for the colour
         // let message_size : usize = led_num*COLOUR_SIZE;
-        
+
         // let mut packet_byte_array = vec![0 as u8; message_size];
         let mut packet_byte_array = [0 as u8; 1024];
         // for (idx, pixel) in pixel_strip.iter().enumerate() {
@@ -121,10 +121,10 @@ impl PixelStripSerialize for PixelStrip {
                 packet_byte_array[pixel_idx+3] = pixel_strip[pixel_idx].colour[2];
                 // stdout.set_color(ColorSpec::new().set_fg(Some(Color::Rgb(
                 //     packet_byte_array[pixel_idx+0],
-                //     packet_byte_array[pixel_idx+1], 
+                //     packet_byte_array[pixel_idx+1],
                 //     packet_byte_array[pixel_idx+2]))));
                 // println!("▀");
-            } 
+            }
             // else {
                 //without this we could have an error where we 0 out the first led
             //     let pixel_real_idx = pixel_idx as u8/4u8;

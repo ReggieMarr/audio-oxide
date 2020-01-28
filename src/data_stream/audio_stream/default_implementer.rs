@@ -1,7 +1,6 @@
 //This should probably live a level up
 use rustfft::{FFTplanner, FFT};
 use std::sync::{Arc, Mutex};
-use arr_macro::arr;
 use crate::data_stream::audio_stream as local_mod;
 
 use num::complex::Complex;
@@ -37,11 +36,11 @@ impl<'stream_life, ADC, BufferT> AudioStream<'stream_life, ADC, BufferT> {
     }
 }
 
-impl<'stream_life, ADC, BufferT> Package for AudioStream<'stream_life, ADC, BufferT>
-    where ADC : IntoIterator,
+impl<'stream_life, ADC, BufferT> Package<'stream_life, ADC, BufferT> for AudioStream<'stream_life, ADC, BufferT>
+    where AudioStream<'stream_life, ADC, BufferT> : IntoIterator,
+    //where ADC : IntoIterator,
 {
-
-    fn package<Bool>(&self, package_item : ADC)->std::io::Result<Bool> {
+    fn package<Bool>(&self, package_item : AudioStream<ADC, BufferT>)->std::io::Result<Bool> {
         static mut analytic_buffer : Vec<AudioSample> = Vec::with_capacity(BUFF_SIZE + 3);//vec![AudioSample::default(); self.buffer_size + 3];
         //this should be stuck to the type used in self
         static mut prev_input : Complex<f32> = Complex::new(0.0, 0.0);

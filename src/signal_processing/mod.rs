@@ -37,9 +37,9 @@ pub trait TransformOptions<SourceType> {
 
 
 pub struct Scope {
-    start : usize,
-    end : usize,
-    size : usize
+    pub start : usize,
+    pub end : usize,
+    pub size : usize
 }
 
 impl Scope {
@@ -100,7 +100,7 @@ impl<'a, T, R> Sample::<'a, T, R>
 
         let cfg_output = None;//self.cycle_transforms();
         Sample {
-            data_points : &input_data,
+            data_points : input_data,
             scope : cfg_scope,
             //we only need an output if we have multiple
             //types otherwise just mutate the input
