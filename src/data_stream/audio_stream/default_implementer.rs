@@ -23,28 +23,29 @@ use local_mod::common::{
     AudioStream,
     New,
     Package,
+    InputStreamSample,
+    AudioSampleStream,
+    ADCResolution
 };
 
 use crate::signal_processing::{Sample, TransformOptions};
 
-//impl<'stream_life, DataStreamType> New for AudioStream<'stream_life, DataStreamType> {
-//
+//impl<ADC, BufferT> AudioStream<ADC, BufferT> {
+//    pub fn peak_current_sample(&self)->Mutex<Sample<ADC>> {
+//        self.buffer[self.current_buff][self.current_sample]
+//    }
 //}
-impl<ADC, BufferT> AudioStream<ADC, BufferT> {
-    pub fn peak_current_sample(&self)->Mutex<Sample<ADC>> {
-        self.buffer[self.current_buff][self.current_sample]
-    }
-}
 
-impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
-    where AudioStream<ADC, BufferT> : IntoIterator,
-          <AudioStream<ADC, BufferT> as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
+impl Package<InputStreamSample, AudioSampleStream> for AudioStream<AudioSampleStream>
+    //where AudioStream<ADC, BufferT> : IntoIterator,
+    //      <AudioStream<ADC, BufferT> as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
 {
-    fn package<Bool>(&self)->std::io::Result<Bool> {
-        static mut analytic_buffer : Vec<AudioSample> = Vec::with_capacity(BUFF_SIZE + 3);//vec![AudioSample::default(); self.buffer_size + 3];
+    fn package<Bool>(&self, proccessed_stream : InputStreamSample)
+        ->std::io::Result<Bool> {
+        static mut analytic_buffer : AudioSampleStream = Vec::with_capacity(BUFF_SIZE + 3);
         //this should be stuck to the type used in self
-        static mut prev_input : Complex<f32> = Complex::new(0.0, 0.0);
-        static mut prev_diff : Complex<f32> = Complex::new(0.0, 0.0);
+        static mut prev_input : Complex<ADCResolution> = Complex::new(0.0, 0.0);
+        static mut prev_diff : Complex<ADCResolution> = Complex::new(0.0, 0.0);
         //These are both config values
         let angle_lp = get_lowpass(ANGLE_CUTOFF, ANGLE_Q);
         let noise_lp = get_lowpass(NOISE_CUTOFF, NOISE_Q);
@@ -55,11 +56,11 @@ impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
             analytic_buffer[2] = analytic_buffer[BUFF_SIZE + 2];
         //}
         //this is real bad to do
-        let freq_res = SAMPLE_RATE as f32 / FFT_SIZE as f32;
+        let freq_res = SAMPLE_RATE as ADCResolution / FFT_SIZE as ADCResolution;
         // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
         //this takes 256 points from the complex_freq_buffer into the analytic_buffer
         // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
-        let freq_iter = self.freq_buffer.iter().zip(analytic_buffer.iter_mut());
+        let freq_iter = proccessed_stream.iter().zip(analytic_buffer.iter_mut());
         for (freq_idx, (&x, y)) in freq_iter.enumerate() {
             let diff = x - prev_input; // vector
             prev_input = x;
@@ -69,7 +70,7 @@ impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
 
             let output = angle_lp(angle);
 
-            let freq_idx = freq_res * freq_idx as f32;
+            let freq_idx = freq_res * freq_idx as ADCResolution;
 
             *y = AudioSample {
                 complex_point : x,
@@ -82,7 +83,7 @@ impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
         static mut buffer_index : usize = 0;
         //what is rendered and why would dropped represent its inverse ?
         let dropped = {
-            let mut buffer = self.buffer[buffer_index].lock().unwrap();
+            let mut buffer = self.buffers[buffer_index].lock().unwrap();
             let rendered = buffer.rendered;
             buffer.analytic.copy_from_slice(&analytic_buffer);
             buffer.rendered = false;
@@ -95,17 +96,17 @@ impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
 }
 
 
-//impl<'stream_life> AudioStream<'stream_life, Vec<f32>>
+//impl<'stream_life> AudioStream<'stream_life, Vec<ADCResolution>>
 //{
 //    //this could be a trait for audio stuff like make_mono
-//    fn normalize_sample(&self, data : Vec<f32>, time_index : usize)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
+//    fn normalize_sample(&self, data : Vec<ADCResolution>, time_index : usize)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
 //        //should use const but for now we will hard code FFT_SIZE
-//        static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
+//        static mut sample_buffer : [Complex<ADCResolution>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
 //        //should assert that split point is indeed the middle of the buffer
 //        let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
 //        //This takes the buffer input to the stream and then begins describing the
 //        //input using complex values on a unit circle.alloc
-//        let data = data as Vec<f32>;
+//        let data = data as Vec<ADCResolution>;
 //        for ((x, t0), t1) in data.chunks(CHANNELS)
 //            .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
 //            .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
@@ -120,7 +121,7 @@ impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
 //    //We actually update the time index and the sample buffer
 //    //this stuff may actually make more sense to be implemented on the audio side
 //    //maybe even as a trait like cast_sample
-//    fn clean_stream(&self, data : Vec<f32>)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
+//    fn clean_stream(&self, data : Vec<ADCResolution>)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
 //        //this updates the time index as we continue to sample the audio stream
 //        static mut time_index : usize = 0;
 //        let normalized_sample = self.normalize_sample(data, time_index)?;
@@ -128,7 +129,7 @@ impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
 //        Ok(normalized_sample)
 //    }
 //    //fn coalece(&self, input_adc : DataStreamType)->std::io::Result<bool> {
-//    fn coalece(&self, input_adc : Vec<f32>)->std::io::Result<(AudioSample)> {
+//    fn coalece(&self, input_adc : Vec<ADCResolution>)->std::io::Result<(AudioSample)> {
 //        self.clean_stream(input_adc);
 //        self.thalweg.update(Some(input_adc), None)?;
 //        Ok(self.thalweg.output_data.unwrap())
@@ -138,7 +139,7 @@ impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
 
 // angle between two complex numbers
 // scales into [0, 0.5]
-fn get_angle(v: Complex<f32>, u: Complex<f32>) -> f32 {
+fn get_angle(v: Complex<ADCResolution>, u: Complex<ADCResolution>) -> ADCResolution {
     // 2 atan2(len(len(v)*u − len(u)*v), len(len(v)*u + len(u)*v))
     let len_v_mul_u = v.norm_sqr().sqrt() * u;
     let len_u_mul_v = u.norm_sqr().sqrt() * v;
@@ -148,7 +149,7 @@ fn get_angle(v: Complex<f32>, u: Complex<f32>) -> f32 {
 }
 
 // returns biquad lowpass filter
-fn get_lowpass(n: f32, q: f32) -> Box<dyn FnMut(f32) -> f32> {
+fn get_lowpass(n: ADCResolution, q: ADCResolution) -> Box<dyn FnMut(ADCResolution) -> ADCResolution> {
     let k = (0.5 * n * ::std::f32::consts::PI).tan();
     let norm = 1.0 / (1.0 + k / q + k * k);
     let a0 = k * k * norm;
@@ -174,12 +175,12 @@ fn get_lowpass(n: f32, q: f32) -> Box<dyn FnMut(f32) -> f32> {
 // FIR analytical signal transform of length n with zero padding to be length m
 // real part removes DC and nyquist, imaginary part phase shifts by 90
 // should act as bandpass (remove all negative frequencies + DC & nyquist)
-//fn make_analytic(n: usize, m: usize) -> Vec<Complex<f32>> {
-fn make_analytic(n: usize) -> [Complex<f32>; FFT_SIZE] {
+//fn make_analytic(n: usize, m: usize) -> Vec<Complex<ADCResolution>> {
+fn make_analytic(n: usize) -> [Complex<ADCResolution>; FFT_SIZE] {
     use ::std::f32::consts::PI;
     assert_eq!(n % 2, 1, "n should be odd");
     assert!(n <= FFT_SIZE, "n should be less than or equal to FFT_SIZE");
-    // let a = 2.0 / n as f32;
+    // let a = 2.0 / n as ADCResolution;
     let mut fft_planner = FFTplanner::new(false);
     //this probably doesn't need to be mut
     let mut fft = fft_planner.plan_fft(FFT_SIZE);
@@ -191,18 +192,18 @@ fn make_analytic(n: usize) -> [Complex<f32>; FFT_SIZE] {
     let mid = (n - 1) / 2;
 
     impulse[mid].re = 1.0;
-    let re = -1.0 / (mid - 1) as f32;
+    let re = -1.0 / (mid - 1) as ADCResolution;
     for i in 1..mid+1 {
         if i % 2 == 0 {
             impulse[mid + i].re = re;
             impulse[mid - i].re = re;
         } else {
-            let im = 2.0 / PI / i as f32;
+            let im = 2.0 / PI / i as ADCResolution;
             impulse[mid + i].im = im;
             impulse[mid - i].im = -im;
         }
         // hamming window
-        let k = 0.53836 + 0.46164 * (i as f32 * PI / (mid + 1) as f32).cos();
+        let k = 0.53836 + 0.46164 * (i as ADCResolution * PI / (mid + 1) as ADCResolution).cos();
         impulse[mid + i] = impulse[mid + i].scale(k);
         impulse[mid - i] = impulse[mid - i].scale(k);
     }

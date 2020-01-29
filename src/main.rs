@@ -44,15 +44,20 @@ use audio_stream::{
 };
 
 use audio_stream::common::Process;
-impl<SampleType, BufferType> Process for AudioStream<SampleType, BufferType> {
-    fn process(&self) {
-        //should be able to derive this from SourceType
-        type TransformBaseType = f32;
-        static mut fft_planner : FFTplanner<TransformBaseType> = FFTplanner::new(false);
-        static fft : Arc<dyn FFT<TransformBaseType>> = fft_planner.plan_fft(FFT_SIZE);
-        fft.process(& mut self.time_buffer, & mut self.freq_buffer);
-    }
+use audio_stream::common::ADCResolution;
+use audio_stream::common::InputStreamSample;
+use audio_stream::common::AudioSampleStream;
+use std::io::Result;
 
+impl Process for AudioStream<AudioSampleStream> {
+    fn process(&self, input : &mut InputStreamSample)->Result<InputStreamSample> {
+        //should be able to derive this from SourceType
+        static mut fft_planner : FFTplanner<ADCResolution> = FFTplanner::new(false);
+        static fft : Arc<dyn FFT<ADCResolution>> = fft_planner.plan_fft(FFT_SIZE);
+        static mut output : InputStreamSample = Vec::with_capacity(FFT_SIZE);
+        fft.process(input, output);
+        Ok(output)
+    }
 }
 
 fn main() -> std::io::Result<()> {
@@ -60,7 +65,7 @@ fn main() -> std::io::Result<()> {
     //Start the audio stream
     //we pass the lifetime of the current scope into audiostream so that
     //it will stay alive even if we say, end a stream
-    let tune_stream : AudioStream<Complex<f32>, AudioSample> = AudioStream::default();
+    let tune_stream : AudioStream<AudioSampleStream> = AudioStream::default();
     let mut stream : PortAudioStream = tune_stream.startup().unwrap();
 
     stream.start().expect("Unable the open stream");

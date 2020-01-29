@@ -40,42 +40,17 @@ use local_mod::common::{
     CHANNELS,
     GAIN,
     FFT_SIZE,
-    MultiBuffer,
     AudioSample,
     AudioStream
 };
 use local_mod::common::Package;
 use local_mod::common::MakeMono;
 use local_mod::common::InputHandler;
-use local_mod::common::InputStreamADCType;
-use local_mod::common::StereoData;
+use local_mod::common::ADCResolution;
+use local_mod::common::InputStreamSample;
+use local_mod::common::AudioSampleStream;
 use std::marker::PhantomData;
 
-impl MakeMono<StereoData> for AudioStream<StereoData, AudioSample> {
-    //fn make_mono<DataSet, DataMember>(&self, data : &[DataSet], time_index :usize)
-    fn make_mono(&self, data : StereoData, time_index :usize)
-        ->std::io::Result<()>
-    {
-        //should use const but for now we will hard code FFT_SIZE
-        //static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
-        static mut sample_buffer : StereoData = vec![Complex::new(0.0, 0.0); 1024];
-        //should assert that split point is indeed the middle of the buffer
-        let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
-        //This takes the buffer input to the stream and then begins describing the
-        //input using complex values on a unit circle.alloc
-        //let data = data as Vec<f32>;
-        for ((x, t0), t1) in data.chunks(CHANNELS)
-            .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
-            .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
-        {
-            let mono = Complex::new(GAIN * (x[0] + x[1]) / 2.0, 0.0);
-            *t0 = mono;
-            *t1 = mono;
-        }
-        self.mag_buffer[time_index..time_index + FFT_SIZE] = sample_buffer;
-        Ok(())
-    }
-}
 //impl InputHandler for AudioStream<'static, Vec<f32>>{};
 
 pub trait StartStream {
@@ -87,7 +62,7 @@ pub trait StartStream {
 //And we want to pass the address/item which will be mutated here. We wont
 //we will only take the return for portaudio errors. Runtime errors can be checked
 //panicing here and on our implementation side checking if the mutex has been poisened
-impl StartStream for AudioStream<Complex<InputStreamADCType>, AudioSample> {
+impl StartStream for AudioStream<AudioSampleStream> {
     //where AudioStream<'_, Complex<f32>, AudioSample : Process {
     fn startup(&self)->Result<PortAudioStream, portaudio::Error> {
         let pa = PortAudio::new().expect("Unable to init portaudio");
@@ -99,7 +74,7 @@ impl StartStream for AudioStream<Complex<InputStreamADCType>, AudioSample> {
         // We pass which mic should be used, how many channels are used,
         // whether all the values of all the channels should be passed in a
         // single audiobuffer and the latency that should be considered
-        let input_params = StreamParameters::<InputStreamADCType>::new(def_input, CHANNELS as i32, INTERLEAVED, latency);
+        let input_params = StreamParameters::<ADCResolution>::new(def_input, CHANNELS as i32, INTERLEAVED, latency);
 
         pa.is_input_format_supported(input_params, SAMPLE_RATE)?;
         // Settings for an inputstream.
@@ -122,10 +97,13 @@ impl StartStream for AudioStream<Complex<InputStreamADCType>, AudioSample> {
             (receiver, move |InputStreamCallbackArgs { buffer, .. }| {
                 //it might actually make more sense to just get the data, make it into a mono
                 //sample, and then return that as as the buffer
-                let unified_input = self.handle_input(buffer);
-                self.process();
-                let current_sample = self.peak_current_sample().lock().unwrap();
-                if self.package().unwrap() {
+                //this returns the input after it has been made mono
+                //and the subset that matches the current time index
+                //has been selected
+                let time_subset_buffer = self.handle_input(buffer);
+                let processed_buffer = self.process(&mut time_subset_buffer);
+                //let current_sample = self.peak_current_sample().lock().unwrap();
+                if self.package(processed_buffer).unwrap() {
                     sender.send(()).ok();
                 }
                 Continue

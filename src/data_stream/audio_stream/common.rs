@@ -17,30 +17,35 @@ pub const GAIN            : f32   = 1.0;
 // pub type ReceiveType = mpsc::Receiver<mpsc>;
 
 use crate::signal_processing::Sample;
+use std::io::Result;
 
-pub struct AudioSample {
+pub struct AudioSample<Resolution> {
     //a single point on a complex unit circle
-    complex_point : Complex<f32>,
+    complex_point : Complex<Resolution>,
     //the frequency of the point of the unit circle
-    sample_freq : f32,
+    sample_freq : Resolution,
     //average angular noise
-    angular_noise : f32,
+    angular_noise : Resolution,
     //optionally we could also add angular velocity here
-    angular_velocity : f32,
+    angular_velocity : Resolution,
 }
 
-impl Default for AudioSample {
-    fn default()->Self {
-        AudioSample {
-            complex_point : Complex::new(0.0f32, 0.0f32),
-            sample_freq : 0.0f32,
-            angular_noise : 0.0f32,
-            angular_velocity : 0.0f32,
-        }
-    }
-}
+//impl Default for AudioSample<Resolution> {
+//    fn default()->Self {
+//        AudioSample {
+//            complex_point : Complex::new(0.0Resolution, 0.0f32),
+//            sample_freq : 0.0f32,
+//            angular_noise : 0.0f32,
+//            angular_velocity : 0.0f32,
+//        }
+//    }
+//}
 
-pub type MultiBuffer = Arc<[[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS]>;
+//pub type MultiBuffer = Arc<[[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS]>;
+pub type ADCResolution= f32;
+pub type InputStreamSample = Vec<Complex<ADCResolution>>;
+pub type InputStreamSlice<'a> = &'a [ADCResolution];
+pub type AudioSampleStream = Vec<AudioSample<ADCResolution>>;
 
 pub trait New {
     fn new<CFGTYPE>(&self, cfg_data : CFGTYPE)->Self;
@@ -48,17 +53,21 @@ pub trait New {
 //TODO consider creating a more generic samplestream that
 //we can make into an audiostream
 //#[derive(InputHandler)]
-pub struct AudioStream<ADC, BufferT> {
+
+
+pub struct AudioStream<AudioSampleStream> {
     //Using sample probably adds more overhead than needed but lets just try
-    pub time_buffer     : Arc<[[Mutex<Sample<ADC>>; BUFF_SIZE]; NUM_BUFFERS]>,
-    pub freq_buffer     : Arc<[[Mutex<Sample<BufferT>>; BUFF_SIZE]; NUM_BUFFERS]>,
+    //pub time_buffers     : Arc<[[Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS]>,
+    //pub freq_buffers     : Arc<[[Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS]>,
+    //pub processed_buffers : Arc<[[Mutex<Sample<AudioSampleStream>>; BUFF_SIZE]; NUM_BUFFERS]>,
+    pub buffers : Arc<[[Mutex<Sample<AudioSampleStream>>; BUFF_SIZE]; NUM_BUFFERS]>,
     //these should be private and immutable
     pub current_buff   : usize,
     pub current_sample : usize,
     //pub thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
 }
 
-impl<ADC, BufferT> Default for AudioStream<ADC, BufferT> {
+impl Default for AudioStream<AudioSampleStream> {
 
     fn default()->Self {
         /*
@@ -69,68 +78,105 @@ impl<ADC, BufferT> Default for AudioStream<ADC, BufferT> {
            this gives us one audio buffer of which we will make 3 of before sending the RollingSample
            buffer sample
         */
-        let mut cfg_time_buffers : [[ Mutex<Sample<ADC>>; BUFF_SIZE]; NUM_BUFFERS];
-        for outer in 0..NUM_BUFFERS {
-            for inner in 0..BUFF_SIZE {
-                //This should really allow some sort of passing const so I can say the
-                //size of the array
-                cfg_time_buffers[outer][inner] = Mutex::new(Sample::new(Option::None, Option::None,
-                        Some(FFT_SIZE)));
-            }
-        }
-        let time_buffers_ref = Arc::new(cfg_time_buffers);
+        //let mut cfg_time_buffers : [[ Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS];
+        //for outer in 0..NUM_BUFFERS {
+        //    for inner in 0..BUFF_SIZE {
+        //        //This should really allow some sort of passing const so I can say the
+        //        //size of the array
+        //        cfg_time_buffers[outer][inner] = Mutex::new(Sample::new(Option::None, Option::None,
+        //                Some(FFT_SIZE)));
+        //    }
+        //}
+        //let time_buffers_ref = Arc::new(cfg_time_buffers);
+        //
+        //let mut cfg_freq_buffers : [[ Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS];
+        //for outer in 0..NUM_BUFFERS {
+        //    for inner in 0..BUFF_SIZE {
+        //        //This should really allow some sort of passing const so I can say the
+        //        //size of the array
+        //        cfg_freq_buffers[outer][inner] = Mutex::new(Sample::new(Option::None, Option::None,
+        //                Some(FFT_SIZE)));
+        //    }
+        //}
+        //let freq_buffers_ref = Arc::new(cfg_freq_buffers);
 
-        let mut cfg_freq_buffers : [[ Mutex<Sample<BufferT>>; BUFF_SIZE]; NUM_BUFFERS];
+        let mut cfg_buffers : [[ Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS];
         for outer in 0..NUM_BUFFERS {
             for inner in 0..BUFF_SIZE {
                 //This should really allow some sort of passing const so I can say the
                 //size of the array
-                cfg_freq_buffers[outer][inner] = Mutex::new(Sample::new(Option::None, Option::None,
+                cfg_buffers[outer][inner] = Mutex::new(Sample::new(Option::None, Option::None,
                         Some(FFT_SIZE)));
             }
         }
-        let freq_buffers_ref = Arc::new(cfg_freq_buffers);
+        let buffers_ref = Arc::new(cfg_buffers);
         AudioStream{
-            time_buffer : time_buffers_ref,
-            freq_buffer : freq_buffers_ref,
+            //time_buffer : time_buffers_ref,
+            //freq_buffer : freq_buffers_ref,
+            //cfg_processed_buffers : cfg_processed_buffers,
+            buffers : buffers_ref,
             current_buff : 0,
             current_sample : 0,
         }
     }
 }
 
-pub type InputStreamADCType = f32;
-pub type StereoData = Vec<Complex<InputStreamADCType>>;
-pub trait MakeMono<StereoData> {
-    //this will be normalize
-    //it might make more sense to set this in the def of the trait
-    fn make_mono(&self, data : StereoData, time_index : usize)->std::io::Result<()>;
-    //fn make_mono<DataSet, DataMember>(&self, data : &[DataSet], time_index : usize)->std::io::Result<DataSet>;
-}
-
-pub trait InputHandler<InputSliceType> {
+pub trait InputHandler {
     //it might make more sense to set this in the def of the trait
     //type DataSet;
-    fn handle_input<DataType>(&self, data : Vec<DataType>)->std::io::Result<usize>;
+    fn handle_input(&self, data : &mut InputStreamSlice)->std::io::Result<InputStreamSample>;
+    //fn handle_input(&self, data : InputStreamSample)->std::io::Result<InputStreamSample>;
 }
 
-impl InputHandler for AudioStream<StereoData>
-    where AudioStream<StereoData> : MakeMono<StereoData> {
-    fn handle_input<DataType>(&self, raw_data : DataType)->std::io::Result<usize>
+impl InputHandler for AudioStream<AudioSampleStream>
+    where AudioStream<AudioSampleStream> : MakeMono<InputStreamSample> {
+    fn handle_input(&self, raw_data : &mut InputStreamSlice)->Result<InputStreamSample>
+    //fn handle_input(&self, raw_data : InputStreamSample)->Result<InputStreamSample>
     {
         //this updates the time index as we continue to sample the audio stream
         static mut time_index : usize = 0;
-        self.make_mono(raw_data, time_index)?;
+        let unified_buffer = self.make_mono(&mut raw_data, time_index).unwrap();
         time_index = (time_index + BUFF_SIZE) % FFT_SIZE;
         //time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
-        Ok(time_index)
+        Ok(unified_buffer[time_index..(time_index + FFT_SIZE)].to_vec())
+    }
+}
+
+pub trait MakeMono<InputStreamSample> {
+    //this will be normalize
+    //it might make more sense to set this in the def of the trait
+    fn make_mono(&self, data : &mut InputStreamSlice, time_index : usize)->Result<InputStreamSample>;
+    //fn make_mono<DataSet, DataMember>(&self, data : &[DataSet], time_index : usize)->std::io::Result<DataSet>;
+}
+
+impl MakeMono<InputStreamSample> for AudioStream<AudioSampleStream> {
+    //fn make_mono(&self, data : &mut InputStreamSample, time_index :usize)->Result<InputStreamSample>
+    fn make_mono(&self, data : &mut InputStreamSlice, time_index :usize)->Result<InputStreamSample>
+    {
+        //should use const but for now we will hard code FFT_SIZE
+        //static mut sample_buffer : [Complex<f32>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
+        static mut sample_buffer : InputStreamSample = vec![Complex::new(0.0, 0.0); 2 * FFT_SIZE];
+        //should assert that split point is indeed the middle of the buffer
+        let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
+        //This takes the buffer input to the stream and then begins describing the
+        //input using complex values on a unit circle.alloc
+        //let data = data as Vec<f32>;
+        for ((x, t0), t1) in data.chunks(CHANNELS)
+            .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
+            .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
+        {
+            let mono = Complex::new(GAIN * (x[0] + x[1]) / 2.0, 0.0f32);
+            *t0 = mono;
+            *t1 = mono;
+        }
+        Ok(sample_buffer)
     }
 }
 
 pub trait Process {
-    fn process(&self);
+    fn process(&self, input : &mut InputStreamSample)->Result<InputStreamSample>;
 }
 
 pub trait Package<ADC, BufferT> {
-    fn package<R>(&self, package_item : AudioStream<ADC, BufferT>)->std::io::Result<R>;
+    fn package<R>(&self, package_item : AudioStream<AudioSampleStream>)->Result<R>;
 }
