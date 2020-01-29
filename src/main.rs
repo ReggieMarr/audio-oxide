@@ -27,19 +27,6 @@ use signal_processing::{
 };
 use std::sync::{Arc, Mutex};
 use rustfft::{FFTplanner, FFT};
-///Forgot where I was going with this
-/*
-impl<SourceType> TransformOptions<SourceType> for Sample<'_, SourceType, SourceType> {
-    fn process(&self) {
-        //should be able to derive this from SourceType
-        type TransformBaseType = f32;
-        static mut fft_planner : FFTplanner<TransformBaseType> = FFTplanner::new(false);
-        static fft : Arc<dyn FFT<TransformBaseType>> = fft_planner.plan_fft(FFT_SIZE);
-        fft.process(& mut self.data_points, & mut self.data_points);
-    }
-
-}
-*/
 mod pixel;
 mod data_stream;
 use data_stream::audio_stream as audio_stream;
@@ -52,17 +39,29 @@ use audio_stream::{
     common::FFT_SIZE,
 };
 use audio_stream::{
-    audio_source::SetupStream,
+    audio_source::StartStream,
     audio_source::PortAudioStream,
 };
+
+use audio_stream::common::Process;
+impl<SampleType, BufferType> Process for AudioStream<SampleType, BufferType> {
+    fn process(&self) {
+        //should be able to derive this from SourceType
+        type TransformBaseType = f32;
+        static mut fft_planner : FFTplanner<TransformBaseType> = FFTplanner::new(false);
+        static fft : Arc<dyn FFT<TransformBaseType>> = fft_planner.plan_fft(FFT_SIZE);
+        fft.process(& mut self.time_buffer, & mut self.freq_buffer);
+    }
+
+}
 
 fn main() -> std::io::Result<()> {
 
     //Start the audio stream
     //we pass the lifetime of the current scope into audiostream so that
     //it will stay alive even if we say, end a stream
-    let tune_stream : AudioStream<'_, Complex<f32>, AudioSample> = AudioStream::default();
-    let mut stream : PortAudioStream = tune_stream.setup().unwrap();
+    let tune_stream : AudioStream<Complex<f32>, AudioSample> = AudioStream::default();
+    let mut stream : PortAudioStream = tune_stream.startup().unwrap();
 
     stream.start().expect("Unable the open stream");
     thread::sleep(time::Duration::from_secs(10));
@@ -76,7 +75,6 @@ fn main() -> std::io::Result<()> {
             loop {
                 let buffer_sample = buffers.unwrap();
                 let mut buffer = buffer_sample[spectrum_index];
-
             }
             //This is 258 since it needs to store the full range + 3 values to maintain
             //Continuit y

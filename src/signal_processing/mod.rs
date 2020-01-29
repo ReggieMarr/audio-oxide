@@ -6,8 +6,6 @@ It also republishes the module audiovisual. Used to project audio data, visually
 
 */
 pub mod audiovisual;
-
-use std::error::Error;
 const FFT_SIZE              : usize = 1024;
 const NUM_TRANSFORM_OPTIONS : usize = 3;
 
@@ -57,115 +55,60 @@ This is a struct which represents a sample.
 The sample is created by providing some series of data points.
 Optionally we may provide the scope by which these data points fall under.
 If the scope is not provided it is assumed the scope is defined as [0;sizeof(sample)]
-If some transform function is provided then the
+Essentially what we are infering is whether the data_points can/should be subdivided or
+if they represent the base elements of some data set
 */
-pub struct Sample<'a, SampleType, ReturnType> {
-    //pub data_points : &'a [SampleType; FFT_SIZE],
-    pub data_points : &'a mut SampleType,
+//pub struct Sample<'a, SampleType> {
+pub struct Sample<SampleType> {
+    //pub data_points : &'a mut SampleType,
+    pub data_points : Option<Vec<SampleType>>,
     pub scope : Scope,
-    pub output_data : Option<ReturnType>,
-    /*
-    Might want to have a "mapped data type"
-    which maps the data uniformly to an array the
-    size of the scope
-    */
+    pub size : usize
 }
 
-//this is an interesting idea but lets be more straight forward for now
-//impl<SourceType> TransformOptionsTrait<SourceType> for Sample<'_, SourceType, SourceType> {
-//    type TransformBaseType = SourceType;
-//    //fn cycle_transforms(&self, function_vec : Vec<Box<dyn Fn(&mut [SourceType; FFT_SIZE])>>) {
-//    fn cycle_transforms(&self, function_vec : Vec<Box<dyn Fn(&mut SourceType)>>) {
-//        let mut tmp_input = *self.data_points;
-//        for func in function_vec {
-//            func(& mut tmp_input)
-//        }
-//        self.output_data = Some(tmp_input)
-//    }
-//}
-
-impl<'a, T, R> Sample::<'a, T, R>
-    where Sample<'a, T, R> : TransformOptions<T>,
-          &'a T : IntoIterator,
-          <& 'a T as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
+impl<T> Sample::<T>
+    where Sample<T> : TransformOptions<T>,
+          T : IntoIterator,
+          <T as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
 {
-    fn new(input_data : T, input_scope : Option<Scope>)->Self{
+    pub fn new(setup_data : Option<T>, setup_scope : Option<Scope>, setup_size : Option<usize>)->Self{
+        let cfg_size : usize;
         let cfg_scope : Scope;
-        if let Some(_) = input_scope {
-            cfg_scope = input_scope.unwrap();
+        let cfg_data : Option<T>;
+        if let Some(_) = setup_size {
+            cfg_size = setup_size.unwrap();
+            if let Some(_) = setup_scope {
+                cfg_scope = setup_scope.unwrap();
+            }
+            else if cfg_scope != Option::None {
+                //Note that if we do not have a
+                cfg_scope = Scope::new(0, cfg_size);
+            }
         }
         else {
-            cfg_scope = Scope::new(0, FFT_SIZE);
+            //Note that if we do not have a
+            cfg_size = setup_size;
+            if let Some(_) = setup_scope {
+                cfg_scope = setup_scope.unwrap();
+            }
+            else if cfg_scope != Option::None {
+                //Note that if we do not have a
+                panic!("Cannot imply size")
+            }
         }
 
-        let cfg_output = None;//self.cycle_transforms();
+        if let Some(_) = setup_data {
+            cfg_data = setup_data.unwrap();
+        }
+        else {
+            //In the future this should be set using preproccessor commands
+            cfg_data = [Option::None; FFT_SIZE];
+        }
+
         Sample {
-            data_points : input_data,
+            data_points : cfg_data,
             scope : cfg_scope,
-            //we only need an output if we have multiple
-            //types otherwise just mutate the input
-            output_data : cfg_output
+            size : cfg_size
         }
     }
 }
-
-/*impl<T, R> Sample::<'_, T, R> {
- *    //I feel like this could be implemented using traits on TransformOptions
- *    //pub fn new(input_data : [T; FFT_SIZE], input_scope : Option<Scope>, transform_opt : TransformOptions<R>)->Self{
- *    pub fn new(input_data : [T; FFT_SIZE], input_scope : Option<Scope>)->Self{
- *        //let cfg_output = transform_opt.cycle_through(input_data);
- *        let cfg_scope : Scope;
- *        if let Some(_) = input_scope {
- *            cfg_scope = input_scope.unwrap();
- *        }
- *        else {
- *            cfg_scope = Scope::new(0, FFT_SIZE);
- *        }
- *
- *        Sample {
- *            data_points : &input_data,
- *            scope : cfg_scope,
- *            //we only need an output if we have multiple
- *            //types otherwise just mutate the input
- *            output_data : cfg_output
- *        }
- *    }
- *
- *    //Consider using a "RollingSample" for this functionality
- *    // fn cycle(&self)->std::io::Result<()> {
- *    //     if self.output_data.is_none() {
- *    //         panic!("Output data is none!");
- *    //     }
- *    //     self.data_points = self.output_data.unwrap();
- *    // }
- *    //We can update our sample with new data, or a new data_transform function
- *    //TODO: May want to add some way to update the scope and/or break this up
- *    //TODO:May want to introduce some lifetime members here
- *    pub fn update(&self, new_data : Option<Vec<T>>, new_transform : Option<TransformOptions<T>>) -> std::io::Result<()> {
- *        if new_data.is_none() && new_transform.is_none() {
- *            panic!("Update cannot be called with no new data or new transform!");
- *        }
- *        else if !new_data.is_none() && !new_transform.is_none() {
- *            unimplemented!();
- *        }
- *        else if new_data.is_none() && !new_transform.is_none() {
- *            let transform_func = new_transform.unwrap();
- *            //What if we've changed type ? we should check for that if we cant handle it
- *            //self.output_data = Some(transform_func(self.data_points));
- *        }
- *        else if !new_data.is_none() && new_transform.is_none() {
- *            let data = new_data.unwrap();
- *            if self.data_points.len() != data.len() {
- *                panic!("Sample can only be updated with data that shares scope");
- *            }
- *            self.data_points = &data;
- *            if let Some(_) = self.output_data {
- *                //let new_output = transform_opt.cycle_through(input_data);
- *            }
- *        }
- *        else {
- *            panic!("Should not have gotten here")
- *        }
- *        Ok(())
- *    }
- *}*/

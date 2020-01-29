@@ -30,17 +30,17 @@ use crate::signal_processing::{Sample, TransformOptions};
 //impl<'stream_life, DataStreamType> New for AudioStream<'stream_life, DataStreamType> {
 //
 //}
-impl<'stream_life, ADC, BufferT> AudioStream<'stream_life, ADC, BufferT> {
-    pub fn peak_current_sample(&self)->Mutex<Sample<'stream_life, ADC, BufferT>> {
+impl<ADC, BufferT> AudioStream<ADC, BufferT> {
+    pub fn peak_current_sample(&self)->Mutex<Sample<ADC>> {
         self.buffer[self.current_buff][self.current_sample]
     }
 }
 
-impl<'stream_life, ADC, BufferT> Package<'stream_life, ADC, BufferT> for AudioStream<'stream_life, ADC, BufferT>
-    where AudioStream<'stream_life, ADC, BufferT> : IntoIterator,
-    //where ADC : IntoIterator,
+impl<ADC, BufferT> Package<ADC, BufferT> for AudioStream<ADC, BufferT>
+    where AudioStream<ADC, BufferT> : IntoIterator,
+          <AudioStream<ADC, BufferT> as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
 {
-    fn package<Bool>(&self, package_item : AudioStream<ADC, BufferT>)->std::io::Result<Bool> {
+    fn package<Bool>(&self)->std::io::Result<Bool> {
         static mut analytic_buffer : Vec<AudioSample> = Vec::with_capacity(BUFF_SIZE + 3);//vec![AudioSample::default(); self.buffer_size + 3];
         //this should be stuck to the type used in self
         static mut prev_input : Complex<f32> = Complex::new(0.0, 0.0);
@@ -59,7 +59,7 @@ impl<'stream_life, ADC, BufferT> Package<'stream_life, ADC, BufferT> for AudioSt
         // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
         //this takes 256 points from the complex_freq_buffer into the analytic_buffer
         // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
-        let freq_iter = package_item.iter().zip(analytic_buffer.iter_mut());
+        let freq_iter = self.freq_buffer.iter().zip(analytic_buffer.iter_mut());
         for (freq_idx, (&x, y)) in freq_iter.enumerate() {
             let diff = x - prev_input; // vector
             prev_input = x;
