@@ -56,15 +56,10 @@ pub trait New {
 
 
 pub struct AudioStream<AudioSampleStream> {
-    //Using sample probably adds more overhead than needed but lets just try
-    //pub time_buffers     : Arc<[[Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS]>,
-    //pub freq_buffers     : Arc<[[Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS]>,
-    //pub processed_buffers : Arc<[[Mutex<Sample<AudioSampleStream>>; BUFF_SIZE]; NUM_BUFFERS]>,
     pub buffers : Arc<[[Mutex<Sample<AudioSampleStream>>; BUFF_SIZE]; NUM_BUFFERS]>,
     //these should be private and immutable
     pub current_buff   : usize,
     pub current_sample : usize,
-    //pub thalweg                 : Sample<'stream_life, DataStreamType, AudioSample>,
 }
 
 impl Default for AudioStream<AudioSampleStream> {
@@ -78,29 +73,8 @@ impl Default for AudioStream<AudioSampleStream> {
            this gives us one audio buffer of which we will make 3 of before sending the RollingSample
            buffer sample
         */
-        //let mut cfg_time_buffers : [[ Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS];
-        //for outer in 0..NUM_BUFFERS {
-        //    for inner in 0..BUFF_SIZE {
-        //        //This should really allow some sort of passing const so I can say the
-        //        //size of the array
-        //        cfg_time_buffers[outer][inner] = Mutex::new(Sample::new(Option::None, Option::None,
-        //                Some(FFT_SIZE)));
-        //    }
-        //}
-        //let time_buffers_ref = Arc::new(cfg_time_buffers);
-        //
-        //let mut cfg_freq_buffers : [[ Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS];
-        //for outer in 0..NUM_BUFFERS {
-        //    for inner in 0..BUFF_SIZE {
-        //        //This should really allow some sort of passing const so I can say the
-        //        //size of the array
-        //        cfg_freq_buffers[outer][inner] = Mutex::new(Sample::new(Option::None, Option::None,
-        //                Some(FFT_SIZE)));
-        //    }
-        //}
-        //let freq_buffers_ref = Arc::new(cfg_freq_buffers);
 
-        let mut cfg_buffers : [[ Mutex<Sample<InputStreamSample>>; BUFF_SIZE]; NUM_BUFFERS];
+        let mut cfg_buffers : [[ Mutex<Sample<AudioSampleStream>>; BUFF_SIZE]; NUM_BUFFERS];
         for outer in 0..NUM_BUFFERS {
             for inner in 0..BUFF_SIZE {
                 //This should really allow some sort of passing const so I can say the
@@ -111,9 +85,6 @@ impl Default for AudioStream<AudioSampleStream> {
         }
         let buffers_ref = Arc::new(cfg_buffers);
         AudioStream{
-            //time_buffer : time_buffers_ref,
-            //freq_buffer : freq_buffers_ref,
-            //cfg_processed_buffers : cfg_processed_buffers,
             buffers : buffers_ref,
             current_buff : 0,
             current_sample : 0,
@@ -125,13 +96,11 @@ pub trait InputHandler {
     //it might make more sense to set this in the def of the trait
     //type DataSet;
     fn handle_input(&self, data : &mut InputStreamSlice)->std::io::Result<InputStreamSample>;
-    //fn handle_input(&self, data : InputStreamSample)->std::io::Result<InputStreamSample>;
 }
 
 impl InputHandler for AudioStream<AudioSampleStream>
     where AudioStream<AudioSampleStream> : MakeMono<InputStreamSample> {
     fn handle_input(&self, raw_data : &mut InputStreamSlice)->Result<InputStreamSample>
-    //fn handle_input(&self, raw_data : InputStreamSample)->Result<InputStreamSample>
     {
         //this updates the time index as we continue to sample the audio stream
         static mut time_index : usize = 0;
@@ -177,6 +146,7 @@ pub trait Process {
     fn process(&self, input : &mut InputStreamSample)->Result<InputStreamSample>;
 }
 
+
 pub trait Package<ADC, BufferT> {
-    fn package<R>(&self, package_item : AudioStream<AudioSampleStream>)->Result<R>;
+    fn package<R>(&self, package_item : InputStreamSample)->Result<R>;
 }

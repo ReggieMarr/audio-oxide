@@ -50,12 +50,10 @@ use local_mod::common::ADCResolution;
 use local_mod::common::InputStreamSample;
 use local_mod::common::AudioSampleStream;
 use std::marker::PhantomData;
-
-//impl InputHandler for AudioStream<'static, Vec<f32>>{};
-
+use local_mod::common::Process;
 pub trait StartStream {
     //fn setup<OutputType, ErrorType>(&self)->Result<OutputType, ErrorType> {
-    fn startup<OutputType, ErrorType>(&self)->Result<OutputType, ErrorType> {}
+    fn startup(&self)->Result<&'static PortAudioStream, portaudio::Error>;
 }
 //pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
 //we either wanna pass the audio stream we are implementing our specfics on.
@@ -63,8 +61,7 @@ pub trait StartStream {
 //we will only take the return for portaudio errors. Runtime errors can be checked
 //panicing here and on our implementation side checking if the mutex has been poisened
 impl StartStream for AudioStream<AudioSampleStream> {
-    //where AudioStream<'_, Complex<f32>, AudioSample : Process {
-    fn startup(&self)->Result<PortAudioStream, portaudio::Error> {
+    fn startup(&self)->Result<&'static PortAudioStream, portaudio::Error> {
         let pa = PortAudio::new().expect("Unable to init portaudio");
 
         let def_input = pa.default_input_device().expect("Unable to get default device");
@@ -82,26 +79,18 @@ impl StartStream for AudioStream<AudioSampleStream> {
         // the sample rate of the mic and the amount values we want
         let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, BUFF_SIZE as u32);
 
-        //let mut audio_buffer : [[Mutex<AudioSample>; BUFF_SIZE]; NUM_BUFFERS];
         //This creates a thread safe reference counting pointer to buffers
-        //Safe Audio Reference (SAR)
-        //let sar_buff = Arc::new(audio_buffer);
         // This is a lambda which I want called with the samples
         let (receiver, callback) = {
             let (sender, receiver) = mpsc::channel();
-            //let local_sar = sar_buff.clone();
-            //let stream_handler = AudioStream::<'_,Vec<f32>>::new(local_sar);
-
-            //somehow this reads buffer as a module and data as some buffer value
-            //(receiver, move |InputStreamCallbackArgs { buffer: data, .. }| {
-            (receiver, move |InputStreamCallbackArgs { buffer, .. }| {
+            (receiver, move |InputStreamCallbackArgs { buffer : data, .. }| {
                 //it might actually make more sense to just get the data, make it into a mono
                 //sample, and then return that as as the buffer
                 //this returns the input after it has been made mono
                 //and the subset that matches the current time index
                 //has been selected
-                let time_subset_buffer = self.handle_input(buffer);
-                let processed_buffer = self.process(&mut time_subset_buffer);
+                let time_subset_buffer = self.handle_input(&mut data).unwrap();
+                let processed_buffer = self.process(&mut time_subset_buffer).unwrap();
                 //let current_sample = self.peak_current_sample().lock().unwrap();
                 if self.package(processed_buffer).unwrap() {
                     sender.send(()).ok();
@@ -111,6 +100,6 @@ impl StartStream for AudioStream<AudioSampleStream> {
         };
         // Registers the callback with PortAudio
         let mut stream = pa.open_non_blocking_stream(settings, callback)?;
-        Ok(stream)
+        Ok(&stream)
     }
 }

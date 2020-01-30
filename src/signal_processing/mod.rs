@@ -61,15 +61,16 @@ if they represent the base elements of some data set
 //pub struct Sample<'a, SampleType> {
 pub struct Sample<SampleType> {
     //pub data_points : &'a mut SampleType,
-    pub data_points : Option<Vec<SampleType>>,
+    //pub data_points : Vec<Option<SampleType>>,
+    pub data_points : Option<SampleType>,
     pub scope : Scope,
     pub size : usize
 }
 
 impl<T> Sample::<T>
-    where Sample<T> : TransformOptions<T>,
-          T : IntoIterator,
-          <T as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
+    //where Sample<T> : TransformOptions<T>,
+    //      T : IntoIterator,
+    //      <T as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
 {
     pub fn new(setup_data : Option<T>, setup_scope : Option<Scope>, setup_size : Option<usize>)->Self{
         let cfg_size : usize;
@@ -80,33 +81,32 @@ impl<T> Sample::<T>
             if let Some(_) = setup_scope {
                 cfg_scope = setup_scope.unwrap();
             }
-            else if cfg_scope != Option::None {
+            else {
                 //Note that if we do not have a
                 cfg_scope = Scope::new(0, cfg_size);
             }
         }
         else {
             //Note that if we do not have a
-            cfg_size = setup_size;
             if let Some(_) = setup_scope {
                 cfg_scope = setup_scope.unwrap();
             }
-            else if cfg_scope != Option::None {
+            else {
                 //Note that if we do not have a
                 panic!("Cannot imply size")
             }
         }
 
-        if let Some(_) = setup_data {
-            cfg_data = setup_data.unwrap();
-        }
-        else {
-            //In the future this should be set using preproccessor commands
-            cfg_data = [Option::None; FFT_SIZE];
-        }
+        //if let Some(_) = setup_data {
+        //    cfg_data = setup_data.unwrap();
+        //}
+        //else {
+        //    //In the future this should be set using preproccessor commands
+        //    cfg_data =
+        //}
 
         Sample {
-            data_points : cfg_data,
+            data_points : setup_data,
             scope : cfg_scope,
             size : cfg_size
         }

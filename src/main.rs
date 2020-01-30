@@ -55,10 +55,11 @@ impl Process for AudioStream<AudioSampleStream> {
         static mut fft_planner : FFTplanner<ADCResolution> = FFTplanner::new(false);
         static fft : Arc<dyn FFT<ADCResolution>> = fft_planner.plan_fft(FFT_SIZE);
         static mut output : InputStreamSample = Vec::with_capacity(FFT_SIZE);
-        fft.process(input, output);
+        fft.process(input, &mut output);
         Ok(output)
     }
 }
+
 
 fn main() -> std::io::Result<()> {
 
@@ -66,7 +67,7 @@ fn main() -> std::io::Result<()> {
     //we pass the lifetime of the current scope into audiostream so that
     //it will stay alive even if we say, end a stream
     let tune_stream : AudioStream<AudioSampleStream> = AudioStream::default();
-    let mut stream : PortAudioStream = tune_stream.startup().unwrap();
+    let mut stream : &'_ PortAudioStream = tune_stream.startup().unwrap();
 
     stream.start().expect("Unable the open stream");
     thread::sleep(time::Duration::from_secs(10));
@@ -76,11 +77,11 @@ fn main() -> std::io::Result<()> {
         let mut first = false;
         let spectrum_index = 0;
         loop {
-            let buffers = tune_stream.buffer[buff_idx][sample_idx].lock().unwrap();
-            loop {
-                let buffer_sample = buffers.unwrap();
-                let mut buffer = buffer_sample[spectrum_index];
-            }
+            let buffers = tune_stream.buffers[buff_idx][sample_idx].lock().unwrap();
+            //loop {
+            //    let buffer_sample = buffers.lock().unwrap();
+            //    let mut buffer = buffer_sample[spectrum_index];
+            //}
             //This is 258 since it needs to store the full range + 3 values to maintain
             //Continuit y
             //do something like this
