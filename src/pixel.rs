@@ -1,8 +1,10 @@
 extern crate bincode;
 use serde::ser::{Serialize, SerializeStruct, Serializer};//, Deserialize, Deserializer};
-use std::os::raw::c_char;
-use std::slice;
-
+//use std::os::raw::c_char;
+//use std::slice;
+///Note that when importing sibling modules in an application
+///We need to declare the module in main.rs
+use crate::signal_processing::Scope;
 //might not need this
 #[allow(dead_code)]
 #[repr(C)]
@@ -24,7 +26,7 @@ struct Pixel {
     //Named with a U because 🇨🇦
     pub colour : PixelColour,
     pub on_status : bool,
-    /* 
+    /*
     We could transition to this, using only the dimensions which are relevant
     pub coordinate : Coordinate
     */
@@ -41,7 +43,7 @@ impl Pixel {
         if let Some(_) = setup_index {
             prologue_index = setup_index.unwrap();
         }
-        Pixel { 
+        Pixel {
             colour : prologue_colour,
             on_status : true,
             index : prologue_index
@@ -64,54 +66,6 @@ impl serde::ser::Serialize for Pixel {
 }
 
 
-struct Scope {
-    start : usize,
-    end : usize,
-    size : usize
-}
-
-#[allow(dead_code)]
-impl Scope {
-    fn new(init_start : usize, init_end : usize) -> Result<Scope,()> {
-        assert!(init_start < init_end);
-        Ok(Scope {
-            start : init_start,
-            end : init_end,
-            size : init_end - init_start
-        })
-    }
-}
-
-#[allow(dead_code)]
-struct Sample<'a, SampleType,TransformType> {
-    data : &'a Vec<SampleType>,
-    scope : Scope,
-    output_data : Option<TransformType>,
-    /*
-    Might want to have a "mapped data type"
-    which maps the data uniformly to an array the
-    size of the scope
-    */
-}
-
-#[allow(dead_code)]
-impl<T,R : Default> Sample<'_, T, R> {
-    //DANGER! No idea what &'static does, it may make it difficult to implement the update funciton
-    fn new(input_data : &'static Vec<T>, input_scope : Scope, data_transform : Option<fn(&Vec<T>)->R>)
-        ->Sample<T,R>{
-        let mut output : Option<R> = None;
-        if let Some(_gen_func) = data_transform {
-            let transform_func = data_transform.unwrap();
-            output = Some(transform_func(&input_data));
-        }
-        Sample {
-            data : &input_data,
-            scope : input_scope,
-            output_data : output
-        }
-    }
-}
-
 const DEFAULT_MESSAGE_SIZE : usize = 1024;
 //each led colour is represented by the value of 3 bytes (r,g,b)
 const COLOUR_SIZE : usize = 256*3;
@@ -125,7 +79,7 @@ impl PixelStrip {
     //need an update here that does essentially the same thing except doesnt create a new instance
     //this error probably has something to do with PixelUsing generic types
 #[allow(dead_code)]
-    fn new(scope : Scope, colours : Vec<PixelColour>)->std::io::Result<(PixelStrip)> {
+    fn new(scope : Scope, colours : Vec<PixelColour>)->std::io::Result<PixelStrip> {
         //suboptimal but the best we can do for now
         assert!(scope.size >= colours.len());
         let mut pixel_strip : Vec<Pixel> = Vec::with_capacity(scope.end - scope.start);
@@ -139,18 +93,18 @@ impl PixelStrip {
 }
 
 trait PixelStripSerialize {
-    fn get_packet(&self) -> std::io::Result<(Box<([u8;1024])>)>;
+    fn get_packet(&self) -> std::io::Result<Box<[u8;1024]>>;
 }
 
 impl PixelStripSerialize for PixelStrip {
 
-    fn get_packet(&self) -> std::io::Result<(Box<([u8;1024])>)> {
-        
+    fn get_packet(&self) -> std::io::Result<Box<[u8;1024]>> {
+
         let pixel_strip = &self.strip;
         // assert(pixel_strip.len(), led_num);
         //the message_size is determined by the number of leds multiplied by the memory required for the colour
         // let message_size : usize = led_num*COLOUR_SIZE;
-        
+
         // let mut packet_byte_array = vec![0 as u8; message_size];
         let mut packet_byte_array = [0 as u8; 1024];
         // for (idx, pixel) in pixel_strip.iter().enumerate() {
@@ -167,10 +121,10 @@ impl PixelStripSerialize for PixelStrip {
                 packet_byte_array[pixel_idx+3] = pixel_strip[pixel_idx].colour[2];
                 // stdout.set_color(ColorSpec::new().set_fg(Some(Color::Rgb(
                 //     packet_byte_array[pixel_idx+0],
-                //     packet_byte_array[pixel_idx+1], 
+                //     packet_byte_array[pixel_idx+1],
                 //     packet_byte_array[pixel_idx+2]))));
                 // println!("▀");
-            } 
+            }
             // else {
                 //without this we could have an error where we 0 out the first led
             //     let pixel_real_idx = pixel_idx as u8/4u8;

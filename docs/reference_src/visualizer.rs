@@ -64,7 +64,7 @@ impl Default for Uniforms {
     // pub vec: [f32; 2],
 // }
 // implement_vertex!(Vec2, vec);
-// 
+//
 // #[derive(Copy, Clone)]
 // pub struct Vec4 {
     // pub vec: [f32; 4],
