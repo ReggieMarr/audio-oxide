@@ -46,6 +46,7 @@ use audio_stream::{
 use audio_stream::common::Process;
 use audio_stream::common::ADCResolution;
 use audio_stream::common::InputStreamSample;
+use audio_stream::common::InputStreamSlice;
 use audio_stream::common::AudioSampleStream;
 use std::io::Result;
 
@@ -59,7 +60,6 @@ impl Process for AudioStream<AudioSampleStream> {
         Ok(output)
     }
 }
-
 
 fn main() -> std::io::Result<()> {
 

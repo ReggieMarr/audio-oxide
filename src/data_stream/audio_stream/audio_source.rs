@@ -47,13 +47,13 @@ use local_mod::common::Package;
 use local_mod::common::MakeMono;
 use local_mod::common::InputHandler;
 use local_mod::common::ADCResolution;
-use local_mod::common::InputStreamSample;
+use local_mod::common::InputStreamSlice;
 use local_mod::common::AudioSampleStream;
 use std::marker::PhantomData;
 use local_mod::common::Process;
 pub trait StartStream {
     //fn setup<OutputType, ErrorType>(&self)->Result<OutputType, ErrorType> {
-    fn startup(&self)->Result<&'static PortAudioStream, portaudio::Error>;
+    fn startup(&self, callback : Box<dyn FnMut(InputStreamSlice)>)->Result<PortAudioStream, portaudio::Error>;
 }
 //pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
 //we either wanna pass the audio stream we are implementing our specfics on.
@@ -61,7 +61,7 @@ pub trait StartStream {
 //we will only take the return for portaudio errors. Runtime errors can be checked
 //panicing here and on our implementation side checking if the mutex has been poisened
 impl StartStream for AudioStream<AudioSampleStream> {
-    fn startup(&self)->Result<&'static PortAudioStream, portaudio::Error> {
+    fn startup(&self, callback : Box<dyn FnMut(InputStreamSlice)>)->Result<PortAudioStream, portaudio::Error> {
         let pa = PortAudio::new().expect("Unable to init portaudio");
 
         let def_input = pa.default_input_device().expect("Unable to get default device");
@@ -81,25 +81,25 @@ impl StartStream for AudioStream<AudioSampleStream> {
 
         //This creates a thread safe reference counting pointer to buffers
         // This is a lambda which I want called with the samples
-        let (receiver, callback) = {
-            let (sender, receiver) = mpsc::channel();
-            (receiver, move |InputStreamCallbackArgs { buffer : data, .. }| {
-                //it might actually make more sense to just get the data, make it into a mono
-                //sample, and then return that as as the buffer
-                //this returns the input after it has been made mono
-                //and the subset that matches the current time index
-                //has been selected
-                let time_subset_buffer = self.handle_input(&mut data).unwrap();
-                let processed_buffer = self.process(&mut time_subset_buffer).unwrap();
-                //let current_sample = self.peak_current_sample().lock().unwrap();
-                if self.package(processed_buffer).unwrap() {
-                    sender.send(()).ok();
-                }
-                Continue
-            })
-        };
+        //let (receiver, callback) = {
+        //    let (sender, receiver) = mpsc::channel();
+        //    (receiver, move |InputStreamCallbackArgs { buffer : data, .. }| {
+        //        //it might actually make more sense to just get the data, make it into a mono
+        //        //sample, and then return that as as the buffer
+        //        //this returns the input after it has been made mono
+        //        //and the subset that matches the current time index
+        //        //has been selected
+        //        let time_subset_buffer = self.handle_input(&mut data).unwrap();
+        //        let processed_buffer = self.process(&mut time_subset_buffer).unwrap();
+        //        //let current_sample = self.peak_current_sample().lock().unwrap();
+        //        if self.package(processed_buffer).unwrap() {
+        //            sender.send(()).ok();
+        //        }
+        //        Continue
+        //    })
+        //};
         // Registers the callback with PortAudio
         let mut stream = pa.open_non_blocking_stream(settings, callback)?;
-        Ok(&stream)
+        Ok(stream)
     }
 }
