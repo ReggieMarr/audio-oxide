@@ -34,6 +34,7 @@ pub trait TransformOptions<SourceType> {
 }
 
 
+#[derive(Copy, Clone)]
 pub struct Scope {
     pub start : usize,
     pub end : usize,
@@ -41,7 +42,7 @@ pub struct Scope {
 }
 
 impl Scope {
-    fn new(init_start : usize, init_end : usize)->Self {
+    pub fn new(init_start : usize, init_end : usize)->Self {
         assert!(init_start < init_end);
         Scope {
             start : init_start,
@@ -58,57 +59,48 @@ If the scope is not provided it is assumed the scope is defined as [0;sizeof(sam
 Essentially what we are infering is whether the data_points can/should be subdivided or
 if they represent the base elements of some data set
 */
-//pub struct Sample<'a, SampleType> {
+#[derive(Copy, Clone)]
 pub struct Sample<SampleType> {
-    //pub data_points : &'a mut SampleType,
-    //pub data_points : Vec<Option<SampleType>>,
-    pub data_points : Option<SampleType>,
+    //pub data_points : Option<SampleType>,
+    pub data_points : SampleType,
     pub scope : Scope,
-    pub size : usize
 }
 
 impl<T> Sample::<T>
-    //where Sample<T> : TransformOptions<T>,
-    //      T : IntoIterator,
-    //      <T as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
+    where T : Default,
+          T : IntoIterator,
+          <T as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
 {
-    pub fn new(setup_data : Option<T>, setup_scope : Option<Scope>, setup_size : Option<usize>)->Self{
-        let cfg_size : usize;
+    pub fn new(setup_data : Option<T>, setup_scope : Option<Scope>)->Self{
         let cfg_scope : Scope;
-        let cfg_data : Option<T>;
-        if let Some(_) = setup_size {
-            cfg_size = setup_size.unwrap();
-            if let Some(_) = setup_scope {
-                cfg_scope = setup_scope.unwrap();
-            }
-            else {
-                //Note that if we do not have a
-                cfg_scope = Scope::new(0, cfg_size);
-            }
-        }
-        else {
-            //Note that if we do not have a
-            if let Some(_) = setup_scope {
-                cfg_scope = setup_scope.unwrap();
-            }
-            else {
-                //Note that if we do not have a
-                panic!("Cannot imply size")
-            }
-        }
+        //Note that if we do not have a
 
-        //if let Some(_) = setup_data {
-        //    cfg_data = setup_data.unwrap();
-        //}
-        //else {
-        //    //In the future this should be set using preproccessor commands
-        //    cfg_data =
-        //}
+        let cfg_data : T;
+        if let Some(_) = setup_data {
+            cfg_data = setup_data.unwrap();
+            if let Some(_) = setup_scope {
+                cfg_scope = setup_scope.unwrap();
+            }
+            else {
+                //Note that if we do not have a
+                unimplemented!("Scope inferment not implemented")
+                //cfg_scope = Scope::new(0, cfg_data.len());
+            }
+        }
+        else{
+            cfg_data = T::default();
+            if let Some(_) = setup_scope {
+                cfg_scope = setup_scope.unwrap();
+            }
+            else {
+                //Note that if we do not have a
+                panic!("Cannot imply scope")
+            }
+        }
 
         Sample {
-            data_points : setup_data,
+            data_points : cfg_data,
             scope : cfg_scope,
-            size : cfg_size
         }
     }
 }

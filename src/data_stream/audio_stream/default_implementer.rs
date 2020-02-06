@@ -21,46 +21,37 @@ use local_mod::common::{
 use local_mod::common::{
     AudioSample,
     AudioStream,
-    New,
     Package,
     InputStreamSample,
     AudioSampleStream,
     ADCResolution
 };
-
-use crate::signal_processing::{Sample, TransformOptions};
-
-//impl<ADC, BufferT> AudioStream<ADC, BufferT> {
-//    pub fn peak_current_sample(&self)->Mutex<Sample<ADC>> {
-//        self.buffer[self.current_buff][self.current_sample]
-//    }
-//}
+use crate::signal_processing::Sample;
+use crate::signal_processing::Scope;
 
 impl Package<InputStreamSample, AudioSampleStream> for AudioStream<AudioSampleStream>
-    //where AudioStream<ADC, BufferT> : IntoIterator,
-    //      <AudioStream<ADC, BufferT> as IntoIterator>::IntoIter : ::std::iter::ExactSizeIterator
 {
-    fn package<Bool>(&self, proccessed_stream : InputStreamSample)
-        ->std::io::Result<Bool> {
-        static mut analytic_buffer : AudioSampleStream = Vec::with_capacity(BUFF_SIZE + 3);
+    fn package(&mut self, proccessed_stream : InputStreamSample)
+        ->std::io::Result<bool> {
+        //let mut analytic_buffer : [AudioSampleStream; (BUFF_SIZE + 3)] = [AudioSampleStream::default(); (BUFF_SIZE + 3)];
+        let mut analytic_buffer : Vec<AudioSampleStream> =
+            vec![AudioSampleStream::default(); BUFF_SIZE + 3];
         //this should be stuck to the type used in self
-        static mut prev_input : Complex<ADCResolution> = Complex::new(0.0, 0.0);
-        static mut prev_diff : Complex<ADCResolution> = Complex::new(0.0, 0.0);
-        //These are both config values
-        let angle_lp = get_lowpass(ANGLE_CUTOFF, ANGLE_Q);
-        let noise_lp = get_lowpass(NOISE_CUTOFF, NOISE_Q);
+        let mut prev_input : Complex<ADCResolution> = Complex::new(0.0, 0.0);
+        let mut prev_diff : Complex<ADCResolution> = Complex::new(0.0, 0.0);
+        //These are both config values (should be static)
+        let mut angle_lp = get_lowpass(ANGLE_CUTOFF, ANGLE_Q);
+        let mut noise_lp = get_lowpass(NOISE_CUTOFF, NOISE_Q);
         //we need to understand this better, why should we only do this if the filter is applied?
         //if let Some(_) = self.filter {
             analytic_buffer[0] = analytic_buffer[BUFF_SIZE];
             analytic_buffer[1] = analytic_buffer[BUFF_SIZE + 1];
             analytic_buffer[2] = analytic_buffer[BUFF_SIZE + 2];
         //}
-        //this is real bad to do
         let freq_res = SAMPLE_RATE as ADCResolution / FFT_SIZE as ADCResolution;
-        // for (&x, y) in complex_analytic_buffer[fft_size - buffer_size..].iter().zip(analytic_buffer[3..].iter_mut()) {
         //this takes 256 points from the complex_freq_buffer into the analytic_buffer
-        // for (&x, y) in complex_freq_buffer[(fft_size - buffer_size)..].iter().zip(analytic_buffer[3..].iter_mut()) {
-        let freq_iter = proccessed_stream.iter().zip(analytic_buffer.iter_mut());
+        let freq_iter = proccessed_stream[(FFT_SIZE-BUFF_SIZE)..].iter().zip(analytic_buffer[3..].iter_mut());
+        //let freq_iter = proccessed_stream.iter().zip(analytic_buffer.iter_mut());
         for (freq_idx, (&x, y)) in freq_iter.enumerate() {
             let diff = x - prev_input; // vector
             prev_input = x;
@@ -79,63 +70,35 @@ impl Package<InputStreamSample, AudioSampleStream> for AudioStream<AudioSampleSt
                 angular_velocity : output.exp2(),
             }
         }
+        let first_freq = analytic_buffer[3].sample_freq;
+        let last_freq = analytic_buffer.last().unwrap().sample_freq;
+        let sample_scope = Scope::new(first_freq as usize, last_freq as usize);
+        let this_sample = Sample::new(Some(analytic_buffer),Some(sample_scope));
+        static mut current_buff : usize = 0;
+        // let mut buffer_index : usize = 0;
+        //this tells us whether we have a buffer that is ready for analysis
+        unsafe {
+            let dropped = {
+                let mut buffer = self.buffers[current_buff].lock().unwrap();
+                let rendered = self.rendered[current_buff];
+                //let mut idx = 0;
+                //for sample_point in &buffer.data_points {
+                //    sample_point = analytic_buffer[idx];
+                //    idx += 1;
+                //}
 
-        static mut buffer_index : usize = 0;
-        //what is rendered and why would dropped represent its inverse ?
-        let dropped = {
-            let mut buffer = self.buffers[buffer_index].lock().unwrap();
-            let rendered = buffer.rendered;
-            buffer.analytic.copy_from_slice(&analytic_buffer);
-            buffer.rendered = false;
-            !rendered
-        };
-        buffer_index = (buffer_index + 1) % NUM_BUFFERS;
-        Ok(dropped)
+                *buffer = this_sample;
+                //&buffer[..].copy_from_slice(&analytic_buffer[..]);
+                //&buffer[..].clone_from_slice(&analytic_buffer[..]);
+                self.rendered[self.current_buff] = false;
+                !rendered
+            };
+            current_buff = (current_buff + 1) % NUM_BUFFERS;
+            Ok(dropped)
+        }
     }
 
 }
-
-
-//impl<'stream_life> AudioStream<'stream_life, Vec<ADCResolution>>
-//{
-//    //this could be a trait for audio stuff like make_mono
-//    fn normalize_sample(&self, data : Vec<ADCResolution>, time_index : usize)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
-//        //should use const but for now we will hard code FFT_SIZE
-//        static mut sample_buffer : [Complex<ADCResolution>; FFT_SIZE] = arr![Complex::new(0.0, 0.0); 1024];
-//        //should assert that split point is indeed the middle of the buffer
-//        let (left, right) = sample_buffer.split_at_mut(FFT_SIZE);
-//        //This takes the buffer input to the stream and then begins describing the
-//        //input using complex values on a unit circle.alloc
-//        let data = data as Vec<ADCResolution>;
-//        for ((x, t0), t1) in data.chunks(CHANNELS)
-//            .zip(left[time_index..(time_index + BUFF_SIZE)].iter_mut())
-//            .zip(right[time_index..(time_index + BUFF_SIZE)].iter_mut())
-//        {
-//            let mono = Complex::new(GAIN * (x[0] + x[1]) / 2.0, 0.0);
-//            *t0 = mono;
-//            *t1 = mono;
-//        }
-//        Ok(sample_buffer)
-//    }
-//    //May want to encapsulate some of the arguments here. Additionally we are breaking the function does one thing rule
-//    //We actually update the time index and the sample buffer
-//    //this stuff may actually make more sense to be implemented on the audio side
-//    //maybe even as a trait like cast_sample
-//    fn clean_stream(&self, data : Vec<ADCResolution>)->std::io::Result<[Complex<f32>; FFT_SIZE]> {
-//        //this updates the time index as we continue to sample the audio stream
-//        static mut time_index : usize = 0;
-//        let normalized_sample = self.normalize_sample(data, time_index)?;
-//        time_index = ((time_index + BUFF_SIZE) % FFT_SIZE).try_into().unwrap();
-//        Ok(normalized_sample)
-//    }
-//    //fn coalece(&self, input_adc : DataStreamType)->std::io::Result<bool> {
-//    fn coalece(&self, input_adc : Vec<ADCResolution>)->std::io::Result<(AudioSample)> {
-//        self.clean_stream(input_adc);
-//        self.thalweg.update(Some(input_adc), None)?;
-//        Ok(self.thalweg.output_data.unwrap())
-//    }
-//}
-
 
 // angle between two complex numbers
 // scales into [0, 0.5]
@@ -183,7 +146,7 @@ fn make_analytic(n: usize) -> [Complex<ADCResolution>; FFT_SIZE] {
     // let a = 2.0 / n as ADCResolution;
     let mut fft_planner = FFTplanner::new(false);
     //this probably doesn't need to be mut
-    let mut fft = fft_planner.plan_fft(FFT_SIZE);
+    let fft = fft_planner.plan_fft(FFT_SIZE);
 
     //let mut impulse = vec![Complex::new(0.0, 0.0); m];
     let mut impulse = [Complex::new(0.0, 0.0); FFT_SIZE];
