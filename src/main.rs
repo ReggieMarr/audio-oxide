@@ -55,8 +55,7 @@ impl Process for AudioStream<AudioSampleStream> {
 fn main() -> std::io::Result<()> {
 
     //Start the audio stream
-    let mut stream_handler : AudioStream<AudioSampleStream> = AudioStream::default();
-    let startup_res = startup(&mut stream_handler).unwrap();
+    let startup_res = startup().unwrap();
     let mut stream = startup_res.stream;
     let receiver = startup_res.receiver;
 
