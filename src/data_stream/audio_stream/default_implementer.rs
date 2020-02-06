@@ -48,11 +48,13 @@ impl Package<InputStreamSample, AudioSampleStream> for AudioStream<AudioSampleSt
             analytic_buffer[1] = analytic_buffer[BUFF_SIZE + 1];
             analytic_buffer[2] = analytic_buffer[BUFF_SIZE + 2];
         //}
+        let mut count : f32 = 0.0;
         let freq_res = SAMPLE_RATE as ADCResolution / FFT_SIZE as ADCResolution;
         //this takes 256 points from the complex_freq_buffer into the analytic_buffer
         let freq_iter = proccessed_stream[(FFT_SIZE-BUFF_SIZE)..].iter().zip(analytic_buffer[3..].iter_mut());
         //let freq_iter = proccessed_stream.iter().zip(analytic_buffer.iter_mut());
         for (freq_idx, (&x, y)) in freq_iter.enumerate() {
+            count += (x.re + x.im).exp2();
             let diff = x - prev_input; // vector
             prev_input = x;
 
@@ -70,32 +72,28 @@ impl Package<InputStreamSample, AudioSampleStream> for AudioStream<AudioSampleSt
                 angular_velocity : output.exp2(),
             }
         }
+        if count < 10.0 {
+            println!("Count is low! {:?}", count);
+        }
         let first_freq = analytic_buffer[3].sample_freq;
         let last_freq = analytic_buffer.last().unwrap().sample_freq;
         let sample_scope = Scope::new(first_freq as usize, last_freq as usize);
-        let this_sample = Sample::new(Some(analytic_buffer),Some(sample_scope));
-        static mut current_buff : usize = 0;
+        // let this_sample = Sample::new(Some(analytic_buffer),Some(sample_scope));
+        // static mut current_buff : usize = 0;
         // let mut buffer_index : usize = 0;
         //this tells us whether we have a buffer that is ready for analysis
-        unsafe {
-            let dropped = {
-                let mut buffer = self.buffers[current_buff].lock().unwrap();
-                let rendered = self.rendered[current_buff];
-                //let mut idx = 0;
-                //for sample_point in &buffer.data_points {
-                //    sample_point = analytic_buffer[idx];
-                //    idx += 1;
-                //}
+        let dropped = {
+            let mut buffer = self.buffers[self.current_buff].lock().unwrap();
+            let rendered = self.rendered[self.current_buff];
 
-                *buffer = this_sample;
-                //&buffer[..].copy_from_slice(&analytic_buffer[..]);
-                //&buffer[..].clone_from_slice(&analytic_buffer[..]);
-                self.rendered[self.current_buff] = false;
-                !rendered
-            };
-            current_buff = (current_buff + 1) % NUM_BUFFERS;
-            Ok(dropped)
-        }
+            buffer.data_points.copy_from_slice(&analytic_buffer[3..]);
+            buffer.scope = sample_scope;
+            self.rendered[self.current_buff] = false;
+            !rendered
+        };
+        let current_buff = (self.current_buff + 1) % NUM_BUFFERS;
+        self.current_buff = current_buff;
+        Ok(dropped)
     }
 
 }

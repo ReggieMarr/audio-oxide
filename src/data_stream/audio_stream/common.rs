@@ -167,7 +167,6 @@ pub trait Process {
     fn process(&self, input : InputStreamSample, time_index : usize)->Result<InputStreamSample>;
 }
 
-
 pub trait Package<ADC, BufferT> {
     fn package(&mut self, package_item : InputStreamSample)->Result<bool>;
 }

@@ -4,10 +4,6 @@
 //contains the data reference and some implementation
 //that can be used in the call back to do some dsp
 use std::sync::mpsc;
-//use rustfft::{FFTplanner, FFT};
-//use num::complex::Complex;
-//use std::sync::{Arc, Mutex};
-//use num::complex::Complex;
 extern crate portaudio;
 use portaudio::{
     PortAudio,
@@ -26,38 +22,23 @@ use local_mod::common::{
     INTERLEAVED,
     BUFF_SIZE,
     CHANNELS,
-    //GAIN,
-    //FFT_SIZE,
-    //AudioSample,
     AudioStream
 };
 use local_mod::common::Package;
-//use local_mod::common::MakeMono;
 use local_mod::common::InputHandler;
 use local_mod::common::ADCResolution;
-//use local_mod::common::InputStreamSlice;
 use local_mod::common::AudioSampleStream;
-//use std::marker::PhantomData;
 use local_mod::common::Process;
-//use crate::signal_processing::Sample;
-
-pub struct StreamInterface<AudioSampleStream, PortAudioStream> {
-    receiver : mpsc::Receiver<AudioSampleStream>,
-    stream : PortAudioStream
+pub struct StreamInterface<'a> {
+    pub receiver : mpsc::Receiver<&'a mut AudioStream<AudioSampleStream>>,
+    pub stream : PortAudioStream
 }
-//pub trait StartStream {
-//    //fn setup<OutputType, ErrorType>(&self)->Result<OutputType, ErrorType> {
-//    fn startup(&self)->Result<PortAudioStream, portaudio::Error>;
-//}
-//pub fn init_audio_simple(config: &Devicecfg) -> Result<(PortAudioStream, MultiBuffer), portaudio::Error> {
 //we either wanna pass the audio stream we are implementing our specfics on.
 //And we want to pass the address/item which will be mutated here. We wont
 //we will only take the return for portaudio errors. Runtime errors can be checked
 //panicing here and on our implementation side checking if the mutex has been poisened
-//impl StartStream for AudioStream<AudioSampleStream> {
-//pub fn startup(stream_input : &'a AudioStream<AudioSampleStream>)->Result<PortAudioStream, portaudio::Error> {
-//pub fn startup<'a>(stream_input : &'a AudioStream<AudioSampleStream>)
-pub fn startup()->Result<(PortAudioStream, mpsc::Receiver<AudioStream<AudioSampleStream>>), portaudio::Error> {
+// pub fn startup()->Result<(PortAudioStream, mpsc::Receiver<AudioStream<AudioSampleStream>>), portaudio::Error> {
+pub fn startup<'a>(stream_handler : &'a mut AudioStream<AudioSampleStream>)->Result<StreamInterface, portaudio::Error> {
     let pa = PortAudio::new().expect("Unable to init portaudio");
 
     let def_input = pa.default_input_device().expect("Unable to get default device");
@@ -75,30 +56,25 @@ pub fn startup()->Result<(PortAudioStream, mpsc::Receiver<AudioStream<AudioSampl
     // the sample rate of the mic and the amount values we want
     let settings = InputStreamSettings::new(input_params, SAMPLE_RATE, BUFF_SIZE as u32);
 
+    // let mut stream_handler : AudioStream<AudioSampleStream> = AudioStream::default();
     //This creates a thread safe reference counting pointer to buffers
     // This is a lambda which I want called with the samples
     let (receiver, callback) = {
-        let (sender, receiver) = mpsc::channel::<AudioStream<AudioSampleStream>>();
+        let (sender, receiver) = mpsc::channel::<&'a mut AudioStream<AudioSampleStream>>();
         (receiver, move |InputStreamCallbackArgs { buffer : mut data, .. }| {
-            //it might actually make more sense to just get the data, make it into a mono
-            //sample, and then return that as as the buffer
-            //this returns the input after it has been made mono
-            //and the subset that matches the current time index
-            //has been selected
-            let mut stream_handler : AudioStream<AudioSampleStream> = AudioStream::default();
             let handle_res = stream_handler.handle_input(&mut data).unwrap();
             let processed_buffer = stream_handler.process(handle_res.0, handle_res.1).unwrap();
             //let current_sample = self.peak_current_sample().lock().unwrap();
-            stream_handler.package(processed_buffer).unwrap();
-            sender.send(stream_handler).ok();
-            // if stream_handler.package(processed_buffer).unwrap() {
-            //     sender.send(stream_handler).ok();
-            // }
+            if stream_handler.package(processed_buffer).unwrap() {
+                sender.send(stream_handler).ok();
+            }
             Continue
         })
     };
-    // Registers the callback with PortAudio
-    let stream = pa.open_non_blocking_stream(settings, callback)?;
-    Ok((stream, receiver))
+    let startup_res = StreamInterface {
+        receiver : receiver,
+        // Registers the callback with PortAudio
+        stream : pa.open_non_blocking_stream(settings, callback)?
+    };
+    Ok(startup_res)
 }
-//}

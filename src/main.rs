@@ -11,8 +11,6 @@ use std::{thread, time};
 
 use num::complex::Complex;
 //use device_modules::config::*;
-//use std::io;
-//use std::sync::mpsc::*;
 
 //mod visualizer;
 //use visualizer::display;
@@ -21,10 +19,6 @@ use num::complex::Complex;
 extern crate serde_json;
 // use serde_json;
 mod signal_processing;
-//use signal_processing::{
-//    TransformOptions,
-//    Sample,
-//};
 use std::sync::Arc;
 use rustfft::{FFTplanner, FFT};
 mod pixel;
@@ -36,23 +30,19 @@ use audio_stream::{
     common::FFT_SIZE,
     common::NUM_BUFFERS
 };
-//use audio_stream::{
-//    audio_source::StartStream,
-//    audio_source::PortAudioStream,
-//};
 
 use audio_stream::common::Process;
 use audio_stream::common::ADCResolution;
 use audio_stream::common::InputStreamSample;
 use audio_stream::common::AudioSampleStream;
-use std::io::{Result, Error};
+use std::io::Result;
 use audio_stream::audio_source::startup;
 
 impl Process for AudioStream<AudioSampleStream> {
     fn process(&self, mut input : InputStreamSample, time_index : usize)->Result<InputStreamSample> {
         //should be able to derive this from SourceType
         if input.len() < FFT_SIZE {
-            println!("input should be size {:?} is size {:?}", FFT_SIZE, input.len());
+            panic!("input should be size {:?} is size {:?}", FFT_SIZE, input.len());
         }
         let mut fft_planner : FFTplanner<ADCResolution> = FFTplanner::new(false);
         let fft : Arc<dyn FFT<ADCResolution>> = fft_planner.plan_fft(FFT_SIZE);
@@ -65,18 +55,14 @@ impl Process for AudioStream<AudioSampleStream> {
 fn main() -> std::io::Result<()> {
 
     //Start the audio stream
-    //we pass the lifetime of the current scope into audiostream so that
-    //it will stay alive even if we say, end a stream
-    //let tune_stream : AudioStream<AudioSampleStream> = AudioStream::default();
-    //let mut stream : &'_ PortAudioStream = &tune_stream.startup().unwrap();
-    let startup_res = startup().unwrap();
-    let mut stream = startup_res.0;
-    let receiver = startup_res.1;
+    let mut stream_handler : AudioStream<AudioSampleStream> = AudioStream::default();
+    let startup_res = startup(&mut stream_handler).unwrap();
+    let mut stream = startup_res.stream;
+    let receiver = startup_res.receiver;
 
     stream.start().expect("Unable the open stream");
     thread::sleep(time::Duration::from_secs(10));
     let handle = thread::spawn(move || {
-        let mut buff_idx = 0;
         let mut _sample_idx = 0;
         let mut _first = false;
         let _spectrum_index = 0;
@@ -84,30 +70,18 @@ fn main() -> std::io::Result<()> {
             let received = receiver.recv().unwrap();
             for buff_idx in 0..NUM_BUFFERS {
                 let sample = received.buffers[buff_idx].lock().unwrap();
-                for data in &sample.data_points {
-                    if data.sample_freq == 0.0 {
-                        println!("{:?} {:?} {:?}", received.rendered[buff_idx], data.sample_freq, data.complex_point);
-                    }
-                    else if received.rendered[buff_idx] {
-                        println!("Rendered val");
-                    }
-                }
-                //let buffers = tune_stream.buffers[buff_idx].lock().unwrap();
-                //This is 258 since it needs to store the full range + 3 values to maintain
-                //Continuit y
-                //do something like this
-                //buff_idx = (buff_idx + 1) % buffers.len();
-                //here we borrow a reference to buffer.analytic
-                //this allows get_freq_chart to use the data but ensure nothing else
-                //can manipulate it
-                // println!("size is {:?}",buffer.analytic.len());
-                //make sure to unwrap Results to properly iterate
-                //let freq_mag = get_freq_chart(&buffer.analytic, fft_size, false).unwrap();
+                // for data in &sample.data_points {
+                //     if data.sample_freq == 0.0 {
+                //         println!("{:?} {:?} {:?}", received.rendered[buff_idx], data.sample_freq, data.complex_point);
+                //     }
+                //     else if received.rendered[buff_idx] {
+                //         println!("Rendered val");
+                //     }
+                // }
             }
         }
     });
     handle.join().unwrap();
     stream.stop();
-
     Ok(())
 }
